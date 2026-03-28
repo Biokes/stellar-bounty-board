@@ -43,8 +43,37 @@ app.get("/api/health", (_req: Request, res: Response) => {
   });
 });
 
-app.get("/api/bounties", (_req: Request, res: Response) => {
-  res.json({ data: listBounties() });
+/**
+ * UPDATED: Added Pagination support
+ * Acceptance Criteria: Filters (if added later) must be applied before slicing.
+ */
+app.get("/api/bounties", (req: Request, res: Response) => {
+  try {
+    const allBounties = listBounties(); // Fetches from backend/data/bounties.json
+
+    // 1. Extract and validate pagination params
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string) || 10));
+
+    // 2. Logic for slicing
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedData = allBounties.slice(startIndex, endIndex);
+
+    // 3. Return structured response with metadata
+    res.json({
+      data: paginatedData,
+      meta: {
+        totalCount: allBounties.length,
+        currentPage: page,
+        totalPages: Math.ceil(allBounties.length / limit),
+        hasMore: endIndex < allBounties.length,
+        pageSize: limit
+      }
+    });
+  } catch (error) {
+    sendError(res, error, 500);
+  }
 });
 
 app.post("/api/bounties", limiter, (req: Request, res: Response) => {
@@ -62,7 +91,7 @@ app.post("/api/bounties", limiter, (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/reserve",limiter, (req: Request, res: Response) => {
+app.post("/api/bounties/:id/reserve", limiter, (req: Request, res: Response) => {
   const parsedBody = reserveBountySchema.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({ error: zodErrorMessage(parsedBody.error) });
@@ -77,7 +106,7 @@ app.post("/api/bounties/:id/reserve",limiter, (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/submit",limiter, (req: Request, res: Response) => {
+app.post("/api/bounties/:id/submit", limiter, (req: Request, res: Response) => {
   const parsedBody = submitBountySchema.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({ error: zodErrorMessage(parsedBody.error) });
@@ -97,7 +126,7 @@ app.post("/api/bounties/:id/submit",limiter, (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/release",limiter, (req: Request, res: Response) => {
+app.post("/api/bounties/:id/release", limiter, (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({ error: zodErrorMessage(parsedBody.error) });
@@ -112,7 +141,7 @@ app.post("/api/bounties/:id/release",limiter, (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/refund",limiter, (req: Request, res: Response) => {
+app.post("/api/bounties/:id/refund", limiter, (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({ error: zodErrorMessage(parsedBody.error) });
