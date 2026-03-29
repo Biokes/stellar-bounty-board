@@ -22,6 +22,12 @@ afterEach(() => {
   } catch {
     /* best-effort */
   }
+  try {
+    const auditStorePath = storeFile.replace(/\.json$/i, ".audit.json");
+    fs.unlinkSync(auditStorePath);
+  } catch {
+    /* best-effort */
+  }
 });
 
 async function getApp() {
@@ -96,6 +102,49 @@ describe("API — bounty lifecycle routes", () => {
       .expect(200);
     expect(rel.body.data.status).toBe("released");
     expect(rel.body.data.releasedTxHash).toBe(txHash);
+
+    const logs = await request(app)
+      .get(`/api/bounties/${id}/audit-logs`)
+      .query({ limit: 10, offset: 0 })
+      .expect(200);
+    expect(logs.body.data.map((entry: { transition: string }) => entry.transition)).toEqual([
+      "reserve",
+      "submit",
+      "release",
+    ]);
+    expect(logs.body.pagination.total).toBe(3);
+  });
+
+  it("GET /api/bounties/:id/audit-logs supports pagination", async () => {
+    const app = await getApp();
+    const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    const id = created.data.id as string;
+
+    await request(app).post(`/api/bounties/${id}/reserve`).send({ contributor: CONTRIBUTOR }).expect(200);
+    await request(app)
+      .post(`/api/bounties/${id}/submit`)
+      .send({ contributor: CONTRIBUTOR, submissionUrl: "https://github.com/owner/repo-name/pull/1" })
+      .expect(200);
+    await request(app).post(`/api/bounties/${id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+
+    const first = await request(app).get(`/api/bounties/${id}/audit-logs`).query({ limit: 2, offset: 0 }).expect(200);
+    expect(first.body.data).toHaveLength(2);
+    expect(first.body.pagination.hasMore).toBe(true);
+    expect(first.body.pagination.nextOffset).toBe(2);
+
+    const second = await request(app).get(`/api/bounties/${id}/audit-logs`).query({ limit: 2, offset: 2 }).expect(200);
+    expect(second.body.data).toHaveLength(1);
+    expect(second.body.pagination.hasMore).toBe(false);
+    expect(second.body.pagination.nextOffset).toBeNull();
+  });
+
+  it("GET /api/bounties/:id/audit-logs validates query params", async () => {
+    const app = await getApp();
+    const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    const id = created.data.id as string;
+
+    const res = await request(app).get(`/api/bounties/${id}/audit-logs`).query({ limit: 0 }).expect(400);
+    expect(res.body.error).toMatch(/limit/i);
   });
 
   it("GET /api/bounties/released/export.csv returns CSV export", async () => {

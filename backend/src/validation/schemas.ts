@@ -171,6 +171,45 @@ export const openIssueSchema = z
   })
   .openapi("OpenIssue");
 
+const auditLogMetadataValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+export const bountyAuditLogSchema = z
+  .object({
+    id: z.string().openapi({ example: "AUD-000001" }),
+    bountyId: z.string().openapi({ example: "BNT-0001" }),
+    fromStatus: z
+      .enum(["open", "reserved", "submitted", "released", "refunded", "expired"])
+      .openapi({ example: "open" }),
+    toStatus: z
+      .enum(["open", "reserved", "submitted", "released", "refunded", "expired"])
+      .openapi({ example: "reserved" }),
+    transition: z.enum(["reserve", "submit", "release", "refund", "expire"]).openapi({ example: "reserve" }),
+    actor: z.string().openapi({ example: STELLAR_EXAMPLE }),
+    timestamp: z.number().openapi({ example: 1710003600, description: "Unix timestamp (seconds)." }),
+    metadata: z.record(auditLogMetadataValueSchema).optional().openapi({
+      example: { submissionUrl: "https://github.com/owner/repo/pull/10", hasNotes: true },
+      description: "Transition-specific metadata for tools and debugging.",
+    }),
+  })
+  .openapi("BountyAuditLogRecord");
+
+export const bountyAuditLogPaginationSchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).openapi({ example: 20 }),
+    offset: z.number().int().min(0).openapi({ example: 0 }),
+    total: z.number().int().min(0).openapi({ example: 3 }),
+    hasMore: z.boolean().openapi({ example: false }),
+    nextOffset: z.number().int().min(0).nullable().openapi({ example: null }),
+  })
+  .openapi("BountyAuditLogPagination");
+
+export const bountyAuditLogListResponseSchema = z
+  .object({
+    data: z.array(bountyAuditLogSchema),
+    pagination: bountyAuditLogPaginationSchema,
+  })
+  .openapi("BountyAuditLogListResponse");
+
 export const healthResponseSchema = z
   .object({
     service: z.string().openapi({ example: "stellar-bounty-board-backend" }),

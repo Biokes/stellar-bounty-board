@@ -22,6 +22,12 @@ afterEach(() => {
   } catch {
     /* temp cleanup best-effort */
   }
+  try {
+    const auditStorePath = storeFile.replace(/\.json$/i, ".audit.json");
+    fs.unlinkSync(auditStorePath);
+  } catch {
+    /* temp cleanup best-effort */
+  }
 });
 
 async function loadStore() {
@@ -35,6 +41,7 @@ describe("bountyStore lifecycle — happy paths", () => {
       reserveBounty,
       submitBounty,
       releaseBounty,
+      listBountyAuditLogs,
       listBounties,
     } = await loadStore();
 
@@ -77,6 +84,17 @@ describe("bountyStore lifecycle — happy paths", () => {
 
     const listed = listBounties();
     expect(listed.find((b) => b.id === created.id)?.status).toBe("released");
+
+    const logs = listBountyAuditLogs(created.id);
+    expect(logs.data.map((entry) => entry.transition)).toEqual(["reserve", "submit", "release"]);
+    expect(logs.data[0]).toMatchObject({
+      bountyId: created.id,
+      fromStatus: "open",
+      toStatus: "reserved",
+      actor: CONTRIBUTOR,
+    });
+    expect(logs.data[1]?.metadata?.submissionUrl).toBe("https://github.com/acme/widget/pull/42");
+    expect(logs.pagination.total).toBe(3);
   });
 
   it("create → refund from open", async () => {
@@ -117,6 +135,38 @@ describe("bountyStore lifecycle — happy paths", () => {
     const refunded = refundBounty(created.id, MAINTAINER);
     expect(refunded.status).toBe("refunded");
   });
+
+  it("audit log pagination returns stable slices", async () => {
+    const { createBounty, reserveBounty, submitBounty, releaseBounty, listBountyAuditLogs } =
+      await loadStore();
+
+    const created = createBounty({
+      repo: "acme/widget",
+      issueNumber: 4,
+      title: "Pagination test bounty title with enough chars",
+      summary: "Summary with enough length to satisfy schema validation.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "XLM",
+      amount: 50,
+      deadlineDays: 7,
+      labels: [],
+    });
+
+    reserveBounty(created.id, CONTRIBUTOR);
+    submitBounty(created.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/44");
+    releaseBounty(created.id, MAINTAINER);
+
+    const first = listBountyAuditLogs(created.id, { limit: 2, offset: 0 });
+    expect(first.data).toHaveLength(2);
+    expect(first.pagination.hasMore).toBe(true);
+    expect(first.pagination.nextOffset).toBe(2);
+
+    const second = listBountyAuditLogs(created.id, { limit: 2, offset: 2 });
+    expect(second.data).toHaveLength(1);
+    expect(second.data[0]?.transition).toBe("release");
+    expect(second.pagination.hasMore).toBe(false);
+    expect(second.pagination.nextOffset).toBeNull();
+  });
 });
 
 describe("bountyStore — expiration via normalizeRecords", () => {
@@ -137,12 +187,21 @@ describe("bountyStore — expiration via normalizeRecords", () => {
     };
     fs.writeFileSync(storeFile, JSON.stringify([record]), "utf8");
 
-    const { listBounties } = await loadStore();
+    const { listBounties, listBountyAuditLogs } = await loadStore();
     const listed = listBounties();
     expect(listed[0].status).toBe("expired");
 
     const raw = JSON.parse(fs.readFileSync(storeFile, "utf8")) as BountyRecord[];
     expect(raw[0].status).toBe("expired");
+
+    const logs = listBountyAuditLogs("BNT-0001");
+    expect(logs.data).toHaveLength(1);
+    expect(logs.data[0]).toMatchObject({
+      transition: "expire",
+      fromStatus: "open",
+      toStatus: "expired",
+      actor: "system",
+    });
   });
 
   it("marks reserved bounties past deadline as expired when listed", async () => {

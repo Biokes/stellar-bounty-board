@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { Request, Response } from "express";
 import {
   createBounty,
+  listBountyAuditLogs,
   listBounties,
   refundBounty,
   releaseBounty,
@@ -26,10 +27,41 @@ import {
 
 export const app = express();
 
-
+app.use(cors());
+app.use(requestContextMiddleware);
+app.use(express.json({ verify: captureRawBody }));
 
 function parseId(raw: string | string[] | undefined): string {
   return bountyIdSchema.parse(Array.isArray(raw) ? raw[0] : raw);
+}
+
+function parsePaginationValue(
+  raw: unknown,
+  field: string,
+  defaultValue: number,
+  min: number,
+  max?: number,
+): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value === undefined || value === null || value === "") {
+    return defaultValue;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${field} must be an integer.`);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`${field} must be an integer.`);
+  }
+  if (parsed < min) {
+    throw new Error(`${field} must be greater than or equal to ${min}.`);
+  }
+  if (max !== undefined && parsed > max) {
+    throw new Error(`${field} must be less than or equal to ${max}.`);
+  }
+
+  return parsed;
 }
 
 function jsonError(res: Response, req: Request, statusCode: number, message: string) {
@@ -40,7 +72,7 @@ function escapeCsv(value: unknown): string {
   if (value === null || value === undefined) return "";
   const raw = String(value);
   if (/[",\n\r]/.test(raw)) {
-    return `"${raw.replaceAll('"', '""')}"`;
+    return `"${raw.replace(/"/g, '""')}"`;
   }
   return raw;
 }
@@ -60,6 +92,17 @@ app.get("/api/health", (_req: Request, res: Response) => {
 
 app.get("/api/bounties", (_req: Request, res: Response) => {
   res.json({ data: listBounties() });
+});
+
+app.get("/api/bounties/:id/audit-logs", (req: Request, res: Response) => {
+  try {
+    const limit = parsePaginationValue(req.query.limit, "limit", 20, 1, 100);
+    const offset = parsePaginationValue(req.query.offset, "offset", 0, 0);
+    const page = listBountyAuditLogs(parseId(req.params.id), { limit, offset });
+    res.json(page);
+  } catch (error) {
+    sendError(res, req, error);
+  }
 });
 
 app.get("/api/bounties/released/export.csv", (req: Request, res: Response) => {
@@ -110,7 +153,7 @@ app.get("/api/bounties/released/export.csv", (req: Request, res: Response) => {
       });
 
     const csv = [header, ...rows].join("\n");
-    const timestamp = new Date().toISOString().slice(0, 19).replaceAll(":", "-");
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="released-payouts-${timestamp}.csv"`);
     res.status(200).send(`${csv}\n`);

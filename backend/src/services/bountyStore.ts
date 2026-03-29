@@ -10,6 +10,37 @@ export type BountyStatus =
   | "refunded"
   | "expired";
 
+export type BountyTransitionType = "reserve" | "submit" | "release" | "refund" | "expire";
+
+type AuditMetadataValue = string | number | boolean | null;
+
+export interface BountyAuditLogRecord {
+  id: string;
+  bountyId: string;
+  fromStatus: BountyStatus;
+  toStatus: BountyStatus;
+  transition: BountyTransitionType;
+  actor: string;
+  timestamp: number;
+  metadata?: Record<string, AuditMetadataValue>;
+}
+
+export interface ListBountyAuditLogOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface BountyAuditLogPage {
+  data: BountyAuditLogRecord[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+  };
+}
+
 export interface BountyRecord {
   id: string;
   repo: string;
@@ -46,11 +77,30 @@ export interface CreateBountyInput {
   labels: string[];
 }
 
+interface CreateAuditLogInput {
+  bountyId: string;
+  fromStatus: BountyStatus;
+  toStatus: BountyStatus;
+  transition: BountyTransitionType;
+  actor: string;
+  timestamp?: number;
+  metadata?: Record<string, AuditMetadataValue | undefined>;
+}
+
 function getStorePath(): string {
   if (process.env.BOUNTY_STORE_PATH?.trim()) {
     return path.resolve(process.env.BOUNTY_STORE_PATH.trim());
   }
   return path.resolve(__dirname, "../../data/bounties.json");
+}
+
+function getAuditStorePath(): string {
+  if (process.env.BOUNTY_AUDIT_STORE_PATH?.trim()) {
+    return path.resolve(process.env.BOUNTY_AUDIT_STORE_PATH.trim());
+  }
+
+  const base = getStorePath();
+  return base.endsWith(".json") ? base.replace(/\.json$/i, ".audit.json") : `${base}.audit.json`;
 }
 
 const sampleBounties: BountyRecord[] = [
@@ -95,6 +145,8 @@ function nowInSeconds(): number {
 function ensureStore(): void {
   const storePath = getStorePath();
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  ensureAuditStore();
+
   if (!fs.existsSync(storePath)) {
     fs.writeFileSync(storePath, JSON.stringify(sampleBounties, null, 2));
     return;
@@ -103,6 +155,21 @@ function ensureStore(): void {
   const raw = fs.readFileSync(storePath, "utf8").trim();
   if (!raw) {
     fs.writeFileSync(storePath, JSON.stringify(sampleBounties, null, 2));
+  }
+}
+
+function ensureAuditStore(): void {
+  const storePath = getAuditStorePath();
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+
+  if (!fs.existsSync(storePath)) {
+    fs.writeFileSync(storePath, JSON.stringify([], null, 2));
+    return;
+  }
+
+  const raw = fs.readFileSync(storePath, "utf8").trim();
+  if (!raw) {
+    fs.writeFileSync(storePath, JSON.stringify([], null, 2));
   }
 }
 
@@ -116,13 +183,82 @@ function writeStore(records: BountyRecord[]): void {
   fs.writeFileSync(getStorePath(), JSON.stringify(records, null, 2));
 }
 
+function readAuditStore(): BountyAuditLogRecord[] {
+  ensureAuditStore();
+  return JSON.parse(fs.readFileSync(getAuditStorePath(), "utf8")) as BountyAuditLogRecord[];
+}
+
+function writeAuditStore(records: BountyAuditLogRecord[]): void {
+  fs.writeFileSync(getAuditStorePath(), JSON.stringify(records, null, 2));
+}
+
+function nextAuditId(records: BountyAuditLogRecord[]): string {
+  const highest = records.reduce((max, record) => {
+    const numeric = Number(record.id.replace("AUD-", ""));
+    return Number.isFinite(numeric) ? Math.max(max, numeric) : max;
+  }, 0);
+  return `AUD-${String(highest + 1).padStart(6, "0")}`;
+}
+
+function cleanAuditMetadata(
+  metadata?: Record<string, AuditMetadataValue | undefined>,
+): Record<string, AuditMetadataValue> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const entries = Object.entries(metadata).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries) as Record<string, AuditMetadataValue>;
+}
+
+function appendAuditLogs(inputs: CreateAuditLogInput[]): void {
+  if (inputs.length === 0) {
+    return;
+  }
+
+  const existing = readAuditStore();
+  const next = [...existing];
+
+  for (const input of inputs) {
+    next.push({
+      id: nextAuditId(next),
+      bountyId: input.bountyId,
+      fromStatus: input.fromStatus,
+      toStatus: input.toStatus,
+      transition: input.transition,
+      actor: input.actor,
+      timestamp: input.timestamp ?? nowInSeconds(),
+      metadata: cleanAuditMetadata(input.metadata),
+    });
+  }
+
+  writeAuditStore(next);
+}
+
 function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
   const now = nowInSeconds();
   let changed = false;
+  const auditEntries: CreateAuditLogInput[] = [];
 
   const next = records.map((record) => {
     if ((record.status === "open" || record.status === "reserved") && now > record.deadlineAt) {
       changed = true;
+      auditEntries.push({
+        bountyId: record.id,
+        fromStatus: record.status,
+        toStatus: "expired",
+        transition: "expire",
+        actor: "system",
+        timestamp: now,
+        metadata: {
+          reason: "deadline_passed",
+          deadlineAt: record.deadlineAt,
+        },
+      });
       return {
         ...record,
         status: "expired" as const,
@@ -133,6 +269,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
 
   if (changed) {
     writeStore(next);
+    appendAuditLogs(auditEntries);
   }
   return next;
 }
@@ -219,7 +356,17 @@ export function reserveBounty(id: string, contributor: string): BountyRecord {
     reservedAt: nowInSeconds(),
   };
 
-  return persistUpdated(records, updated);
+  const persisted = persistUpdated(records, updated);
+  appendAuditLogs([
+    {
+      bountyId: id,
+      fromStatus: bounty.status,
+      toStatus: "reserved",
+      transition: "reserve",
+      actor: contributor,
+    },
+  ]);
+  return persisted;
 }
 
 export function submitBounty(
@@ -246,7 +393,21 @@ export function submitBounty(
     notes,
   };
 
-  return persistUpdated(records, updated);
+  const persisted = persistUpdated(records, updated);
+  appendAuditLogs([
+    {
+      bountyId: id,
+      fromStatus: bounty.status,
+      toStatus: "submitted",
+      transition: "submit",
+      actor: contributor,
+      metadata: {
+        submissionUrl,
+        hasNotes: Boolean(notes?.trim()),
+      },
+    },
+  ]);
+  return persisted;
 }
 
 export function releaseBounty(id: string, maintainer: string, transactionHash?: string): BountyRecord {
@@ -267,7 +428,20 @@ export function releaseBounty(id: string, maintainer: string, transactionHash?: 
     releasedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.releasedTxHash,
   };
 
-  return persistUpdated(records, updated);
+  const persisted = persistUpdated(records, updated);
+  appendAuditLogs([
+    {
+      bountyId: id,
+      fromStatus: bounty.status,
+      toStatus: "released",
+      transition: "release",
+      actor: maintainer,
+      metadata: {
+        transactionHash: updated.releasedTxHash,
+      },
+    },
+  ]);
+  return persisted;
 }
 
 export function refundBounty(id: string, maintainer: string, transactionHash?: string): BountyRecord {
@@ -291,6 +465,55 @@ export function refundBounty(id: string, maintainer: string, transactionHash?: s
     refundedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.refundedTxHash,
   };
 
-  return persistUpdated(records, updated);
+  const persisted = persistUpdated(records, updated);
+  appendAuditLogs([
+    {
+      bountyId: id,
+      fromStatus: bounty.status,
+      toStatus: "refunded",
+      transition: "refund",
+      actor: maintainer,
+      metadata: {
+        transactionHash: updated.refundedTxHash,
+      },
+    },
+  ]);
+  return persisted;
 }
 
+export function listBountyAuditLogs(
+  id: string,
+  options: ListBountyAuditLogOptions = {},
+): BountyAuditLogPage {
+  const records = listBounties();
+  findBounty(records, id);
+
+  const limit = Number.isFinite(options.limit) ? Math.trunc(options.limit as number) : 20;
+  const offset = Number.isFinite(options.offset) ? Math.trunc(options.offset as number) : 0;
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  const safeOffset = Math.max(offset, 0);
+
+  const all = readAuditStore()
+    .filter((entry) => entry.bountyId === id)
+    .sort((a, b) => {
+      if (a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      return a.id.localeCompare(b.id);
+    });
+
+  const data = all.slice(safeOffset, safeOffset + safeLimit);
+  const total = all.length;
+  const nextOffset = safeOffset + data.length < total ? safeOffset + data.length : null;
+
+  return {
+    data,
+    pagination: {
+      limit: safeLimit,
+      offset: safeOffset,
+      total,
+      hasMore: nextOffset !== null,
+      nextOffset,
+    },
+  };
+}

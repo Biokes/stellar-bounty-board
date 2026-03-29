@@ -1,6 +1,9 @@
 import { OpenApiGeneratorV31, OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
 import {
+  bountyAuditLogListResponseSchema,
+  bountyAuditLogPaginationSchema,
+  bountyAuditLogSchema,
   bountyRecordSchema,
   createBountySchema,
   errorResponseSchema,
@@ -17,6 +20,9 @@ const registry = new OpenAPIRegistry();
 // Register all named schemas so they appear in #/components/schemas
 // ---------------------------------------------------------------------------
 registry.register("BountyRecord", bountyRecordSchema);
+registry.register("BountyAuditLogRecord", bountyAuditLogSchema);
+registry.register("BountyAuditLogPagination", bountyAuditLogPaginationSchema);
+registry.register("BountyAuditLogListResponse", bountyAuditLogListResponseSchema);
 registry.register("CreateBountyRequest", createBountySchema);
 registry.register("ReserveBountyRequest", reserveBountySchema);
 registry.register("SubmitBountyRequest", submitBountySchema);
@@ -79,6 +85,33 @@ registry.registerPath({
     "Bounties whose deadline has passed are automatically transitioned to `expired` before the list is returned.",
   responses: {
     200: jsonResponse("Array of all bounty records.", z.object({ data: z.array(bountyRecordSchema) })),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/bounties/{id}/audit-logs",
+  tags: ["Bounties"],
+  summary: "List audit logs for one bounty",
+  description:
+    "Returns ordered status transition history for a bounty. " +
+    "Use `limit` (1-100, default 20) and `offset` (default 0) for pagination.",
+  request: {
+    params: z.object({ id: z.string().openapi(bountyIdParam.schema) }),
+    query: z.object({
+      limit: z.number().int().min(1).max(100).optional().openapi({
+        example: 20,
+        description: "Maximum number of audit entries to return (1-100).",
+      }),
+      offset: z.number().int().min(0).optional().openapi({
+        example: 0,
+        description: "Zero-based offset into the ordered audit history.",
+      }),
+    }),
+  },
+  responses: {
+    200: jsonResponse("Audit log page for the requested bounty.", bountyAuditLogListResponseSchema),
+    400: errorResponse("Bounty not found, bounty id invalid, or pagination query invalid."),
   },
 });
 
