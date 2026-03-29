@@ -8,7 +8,7 @@ It includes:
 - A Soroban contract scaffold for on-chain escrow and payout logic
 - Ready-to-open issue drafts so the repo itself is easy to grow through contributions
 
-## What It Does
+## What It Does?
 
 Maintainers can fund a GitHub issue as a Stellar bounty, contributors can reserve the work, submit a PR link, and the maintainer can release or refund the escrow.
 
