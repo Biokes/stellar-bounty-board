@@ -7,6 +7,9 @@ import {
   releaseBounty,
   reserveBounty,
   submitBounty,
+  getBountyEvents,
+  getMaintainerMetrics,
+  getGlobalMetrics,
 } from "./services/bountyStore";
 import { listOpenIssues } from "./services/openIssues";
 import {
@@ -26,7 +29,9 @@ import {
 
 export const app = express();
 
-
+app.use(cors());
+app.use(express.json());
+app.use(requestContextMiddleware);
 
 function parseId(raw: string | string[] | undefined): string {
   return bountyIdSchema.parse(Array.isArray(raw) ? raw[0] : raw);
@@ -142,7 +147,7 @@ app.post("/api/bounties/:id/reserve", limiter, (req: Request, res: Response) => 
   }
 
   try {
-    const bounty = reserveBounty(parseId(req.params.id), parsedBody.data.contributor);
+    const bounty = reserveBounty(parseId(req.params.id), parsedBody.data.contributor, parsedBody.data.expectedVersion);
     res.json({ data: bounty });
   } catch (error) {
     sendError(res, req, error);
@@ -223,4 +228,37 @@ app.post(
 
 app.get("/api/open-issues", (_req: Request, res: Response) => {
   res.json({ data: listOpenIssues() });
+});
+
+
+app.get("/api/bounties/:id/events", (req: Request, res: Response) => {
+  try {
+    const events = getBountyEvents(parseId(req.params.id));
+    res.json({ data: events });
+  } catch (error) {
+    sendError(res, req, error);
+  }
+});
+
+app.get("/api/maintainers/:maintainer/metrics", (req: Request, res: Response) => {
+  try {
+    const { maintainer } = req.params;
+    if (!maintainer || typeof maintainer !== "string") {
+      jsonError(res, req, 400, "Maintainer address is required.");
+      return;
+    }
+    const metrics = getMaintainerMetrics(maintainer);
+    res.json({ data: metrics });
+  } catch (error) {
+    sendError(res, req, error);
+  }
+});
+
+app.get("/api/metrics", (_req: Request, res: Response) => {
+  try {
+    const metrics = getGlobalMetrics();
+    res.json({ data: metrics });
+  } catch (error) {
+    sendError(res, req, error);
+  }
 });

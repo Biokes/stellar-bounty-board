@@ -329,3 +329,138 @@ describe("bountyStore — invalid transitions and errors", () => {
     expect(() => refundBounty(ref.id, MAINTAINER)).toThrow(/finalized/i);
   });
 });
+
+
+describe("bountyStore — event history and metrics", () => {
+  it("getBountyEvents returns event history", async () => {
+    const { createBounty, reserveBounty, getBountyEvents } = await loadStore();
+
+    const created = createBounty({
+      repo: "acme/widget",
+      issueNumber: 1,
+      title: "Fix the widget spinner on slow networks",
+      summary: "Ensure the loading state does not flash when latency is high for users.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 100,
+      deadlineDays: 14,
+      labels: [],
+    });
+
+    const reserved = reserveBounty(created.id, CONTRIBUTOR);
+
+    const events = getBountyEvents(created.id);
+    expect(events.length).toBeGreaterThanOrEqual(2);
+    expect(events[0].type).toBe("created");
+    expect(events[1].type).toBe("reserved");
+    expect(events[1].actor).toBe(CONTRIBUTOR);
+  });
+
+  it("getMaintainerMetrics returns accurate counts", async () => {
+    const { createBounty, reserveBounty, submitBounty, releaseBounty, getMaintainerMetrics } = await loadStore();
+
+    const b1 = createBounty({
+      repo: "acme/widget",
+      issueNumber: 1,
+      title: "Fix the widget spinner",
+      summary: "Ensure the loading state does not flash when latency is high for users.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 100,
+      deadlineDays: 14,
+      labels: [],
+    });
+
+    const b2 = createBounty({
+      repo: "acme/widget",
+      issueNumber: 2,
+      title: "Add dark mode",
+      summary: "Implement dark mode support for the widget component.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 50,
+      deadlineDays: 14,
+      labels: [],
+    });
+
+    reserveBounty(b1.id, CONTRIBUTOR);
+    submitBounty(b1.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/1");
+    releaseBounty(b1.id, MAINTAINER, "a".repeat(64));
+
+    const metrics = getMaintainerMetrics(MAINTAINER);
+    expect(metrics.totalBounties).toBe(2);
+    expect(metrics.openCount).toBe(1);
+    expect(metrics.releasedCount).toBe(1);
+    expect(metrics.totalFunded).toBe(150);
+    expect(metrics.totalReleased).toBe(100);
+    expect(metrics.averageRewardAmount).toBe(75);
+  });
+
+  it("getGlobalMetrics returns system-wide counts", async () => {
+    const { createBounty, getGlobalMetrics } = await loadStore();
+
+    createBounty({
+      repo: "acme/widget",
+      issueNumber: 1,
+      title: "Fix the widget spinner",
+      summary: "Ensure the loading state does not flash when latency is high for users.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 100,
+      deadlineDays: 14,
+      labels: [],
+    });
+
+    const metrics = getGlobalMetrics();
+    expect(metrics.totalBounties).toBeGreaterThan(0);
+    expect(metrics.uniqueMaintainers).toBeGreaterThan(0);
+  });
+
+  it("race condition prevention: version mismatch on reserve", async () => {
+    const { createBounty, reserveBounty } = await loadStore();
+
+    const bounty = createBounty({
+      repo: "acme/widget",
+      issueNumber: 1,
+      title: "Fix the widget spinner",
+      summary: "Ensure the loading state does not flash when latency is high for users.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 100,
+      deadlineDays: 14,
+      labels: [],
+    });
+
+    // First reservation succeeds
+    const reserved1 = reserveBounty(bounty.id, CONTRIBUTOR);
+    expect(reserved1.version).toBe(2);
+
+    // Second reservation attempt should fail because bounty is no longer open
+    expect(() => {
+      reserveBounty(bounty.id, OTHER_ACCOUNT, 1);
+    }).toThrow(/only open bounties/i);
+  });
+
+  it("reservation timeout: expired reservations return to open", async () => {
+    const { createBounty, reserveBounty } = await loadStore();
+
+    const bounty = createBounty({
+      repo: "acme/widget",
+      issueNumber: 1,
+      title: "Fix the widget spinner",
+      summary: "Ensure the loading state does not flash when latency is high for users.",
+      maintainer: MAINTAINER,
+      tokenSymbol: "usdc",
+      amount: 100,
+      deadlineDays: 14,
+      labels: [],
+      reservationTimeoutSeconds: 604800, // 7 days
+    });
+
+    const reserved = reserveBounty(bounty.id, CONTRIBUTOR);
+    expect(reserved.status).toBe("reserved");
+    expect(reserved.reservedAt).toBeDefined();
+    expect(reserved.reservationTimeoutSeconds).toBe(604800);
+    expect(reserved.events.some((e) => e.type === "reserved")).toBe(true);
+  });
+});

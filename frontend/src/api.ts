@@ -1,4 +1,4 @@
-import { Bounty, CreateBountyPayload, OpenIssue } from "./types";
+import { Bounty, BountyEvent, CreateBountyPayload, GlobalMetrics, MaintainerMetrics, OpenIssue } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -125,11 +125,11 @@ export async function createBounty(payload: CreateBountyPayload): Promise<Bounty
   return body.data;
 }
 
-export async function reserveBounty(id: string, contributor: string): Promise<Bounty> {
+export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<Bounty> {
   const body = await requestJson<{ data: Bounty }>(`/bounties/${id}/reserve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contributor }),
+    body: JSON.stringify({ contributor, expectedVersion }),
   });
   return body.data;
 }
@@ -190,3 +190,28 @@ export async function exportReleasedPayoutsCsv(): Promise<{ blob: Blob; filename
   };
 }
 
+
+
+export async function getBountyEvents(id: string): Promise<BountyEvent[]> {
+  const body = await requestJson<{ data: BountyEvent[] }>(`/bounties/${id}/events`, {
+    retry: true,
+    retryLabel: "Loading bounty events",
+  });
+  return body.data;
+}
+
+export async function getMaintainerMetrics(maintainer: string): Promise<MaintainerMetrics> {
+  const body = await requestJson<{ data: MaintainerMetrics }>(`/maintainers/${maintainer}/metrics`, {
+    retry: true,
+    retryLabel: "Loading maintainer metrics",
+  });
+  return body.data;
+}
+
+export async function getGlobalMetrics(): Promise<GlobalMetrics> {
+  const body = await requestJson<{ data: GlobalMetrics }>("/metrics", {
+    retry: true,
+    retryLabel: "Loading global metrics",
+  });
+  return body.data;
+}

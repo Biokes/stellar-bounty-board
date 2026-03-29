@@ -73,6 +73,15 @@ export const createBountySchema = z
       .max(6)
       .default([])
       .openapi({ example: ["bug", "help wanted"], description: "Up to 6 labels for categorisation." }),
+    reservationTimeoutSeconds: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .openapi({
+        example: 604800,
+        description: "Optional reservation timeout in seconds (default: 7 days = 604800 seconds).",
+      }),
   })
   .openapi("CreateBountyRequest");
 
@@ -81,6 +90,14 @@ export const reserveBountySchema = z
     contributor: stellarAccountSchema.openapi({
       description: "Stellar public key of the contributor reserving the bounty.",
     }),
+    expectedVersion: z
+      .number()
+      .int()
+      .optional()
+      .openapi({
+        example: 1,
+        description: "Optional version number for race condition prevention. If provided, must match current bounty version.",
+      }),
   })
   .openapi("ReserveBountyRequest");
 
