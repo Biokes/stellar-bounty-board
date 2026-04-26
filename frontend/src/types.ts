@@ -1,3 +1,7 @@
+export interface GithubLabel {
+  name: string;
+  color: string; // hex without '#', e.g. "e4e669"
+}
 export type BountyStatus =
   | "open"
   | "reserved"
@@ -31,7 +35,7 @@ export interface Bounty {
   contributor?: string;
   tokenSymbol: string;
   amount: number;
-  labels: string[];
+  labels: GithubLabel[];
   status: BountyStatus;
   createdAt: number;
   deadlineAt: number;
@@ -57,13 +61,13 @@ export interface CreateBountyPayload {
   tokenSymbol: string;
   amount: number;
   deadlineDays: number;
-  labels: string[];
+  labels: GithubLabel[];
 }
 
 export interface OpenIssue {
   id: string;
   title: string;
-  labels: string[];
+  labels: GithubLabel[];
   summary: string;
   impact: "starter" | "core" | "advanced";
 }

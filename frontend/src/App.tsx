@@ -55,7 +55,7 @@ const initialForm: CreateBountyPayload = {
   tokenSymbol: "XLM",
   amount: 150,
   deadlineDays: 14,
-  labels: ["help wanted"],
+  labels: [{ name: "help wanted", color: "0075ca" }],
 };
 
 
@@ -722,16 +722,16 @@ function App() {
                 <input
                   value={form.labels.join(", ")}
                   onChange={(event) =>
-                    setForm({
-                      ...form,
-                      labels: event.target.value
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder="help wanted, backend"
-                />
+  setForm({
+    ...form,
+    labels: event.target.value
+      .split(",")
+      .map((item) => ({ name: item.trim(), color: "0075ca" }))
+      .filter((item) => item.name !== ""),
+  })
+}
+placeholder="help wanted, backend"
+/>
               </label>
             </div>
 
@@ -1011,9 +1011,9 @@ function App() {
 
                   <div className="chip-row">
                     {bounty.labels.map((label) => (
-                      <span className="chip" key={label}>
-                        {label}
-                      </span>
+                      <span className="chip" key={label.name}>
+  {label.name}
+</span>
                     ))}
                   </div>
 
@@ -1083,9 +1083,9 @@ function App() {
               <p>{issue.summary}</p>
               <div className="chip-row">
                 {issue.labels.map((label) => (
-                  <span className="chip" key={label}>
-                    {label}
-                  </span>
+                  <span className="chip" key={label.name}>
+  {label.name}
+</span>
                 ))}
               </div>
             </article>

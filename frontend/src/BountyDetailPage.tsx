@@ -144,9 +144,9 @@ export default function BountyDetailPage({
             {bounty.labels.length > 0 && (
               <div className="chip-row chip-row--spaced">
                 {bounty.labels.map((label) => (
-                  <span className="chip" key={label}>
-                    {label}
-                  </span>
+                  <span className="chip" key={label.name}>
+  {label.name}
+</span>
                 ))}
               </div>
             )}
