@@ -3,7 +3,7 @@ import { z } from "zod";
 
 extendZodWithOpenApi(z);
 
-const STELLAR_ACCOUNT_REGEX = /^G[A-Z2-7]{55}$/;
+import { isValidStellarAddress } from "../utils";
 const REPO_REGEX = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 const TOKEN_REGEX = /^[A-Za-z0-9]{1,12}$/;
 
@@ -19,10 +19,12 @@ export const bountyIdSchema = z
 const stellarAccountSchema = z
   .string()
   .trim()
-  .regex(STELLAR_ACCOUNT_REGEX, "Must be a valid Stellar public key.")
+  .refine(isValidStellarAddress, {
+    message: "Must be a valid Stellar public key (G... format, 56 characters with valid checksum).",
+  })
   .openapi({
     example: STELLAR_EXAMPLE,
-    description: "A valid Stellar public key (starts with G, 56 characters).",
+    description: "A valid Stellar public key (starts with G, 56 characters, checksum verified).",
   });
 
 export const createBountySchema = z
