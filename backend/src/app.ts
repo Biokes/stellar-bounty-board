@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
 import { buildCorsOptions } from "./middleware/corsOptions";
+import { createStellarSignatureAuthMiddleware } from "./middleware/auth";
 import {
   createBounty,
   listBountyAuditLogs,
@@ -268,7 +269,9 @@ app.post("/api/bounties/:id/submit", limiter, (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/release", limiter, (req: Request, res: Response) => {
+const stellarSignatureAuth = createStellarSignatureAuthMiddleware();
+
+app.post("/api/bounties/:id/release", limiter, stellarSignatureAuth, (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -287,7 +290,7 @@ app.post("/api/bounties/:id/release", limiter, (req: Request, res: Response) => 
   }
 });
 
-app.post("/api/bounties/:id/refund", limiter, (req: Request, res: Response) => {
+app.post("/api/bounties/:id/refund", limiter, stellarSignatureAuth, (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
