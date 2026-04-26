@@ -10,8 +10,18 @@
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test": "npm --prefix backend test",
     "test:watch": "npm --prefix backend run test:watch",
-    "test:coverage": "npm --prefix backend run test:coverage"
+    "test:coverage": "npm --prefix backend run test:coverage",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "frontend/src/**/*.{ts,tsx}": [
+      "tsc --noEmit -p frontend/tsconfig.json",
+      "eslint --fix"
+    ],
+    "backend/src/**/*.ts": [
+      "tsc --noEmit -p backend/tsconfig.json",
+      "eslint --fix"
+    ]
   },
   "license": "MIT"
 }
-
