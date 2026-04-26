@@ -35,7 +35,7 @@ import SubmissionChecklistModal, { type SubmissionFormData } from "./SubmissionC
 import { BountyRecommendation, ContributorProfile, createDefaultProfile, generateRecommendations, updateProfileFromBounties } from "./recommendations";
 import RecommendedBounties from "./RecommendedBounties";
 import { statusCopy, actionCopy, readInitialFilters, FilterState, statusOptions, statusGlossary, sortOptions } from "./constants";
-import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getRepoMetrics, sortBounties, debounce, SortOption, SortState } from "./utils";
+import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getRepoMetrics, sortBounties, debounce, SortOption, SortState, xlmToUsd } from "./utils";
 import { Bounty, CreateBountyPayload, OpenIssue, BountyStatus } from "./types";
 
 import GitHubIssuePreviewCard from "./GitHubIssuePreviewCard";
@@ -100,6 +100,39 @@ function repoOwner(repo: string): string {
 function formatTimestamp(value?: number): string {
   if (!value) return "-";
   return new Date(value * 1000).toLocaleString();
+}
+
+function BountyAmount({ bounty }: { bounty: Bounty }) {
+  const [usdAmount, setUsdAmount] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (bounty.tokenSymbol.toUpperCase() !== "XLM") {
+      setUsdAmount(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setUsdAmount(null);
+    void xlmToUsd(bounty.amount).then((value) => {
+      if (active) {
+        setUsdAmount(value);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [bounty.amount, bounty.tokenSymbol]);
+
+  return (
+    <div className="amount-chip">
+      <strong>{bounty.amount} {bounty.tokenSymbol}</strong>
+      {usdAmount && <span>{usdAmount}</span>}
+    </div>
+  );
 }
 
 function App() {
@@ -962,9 +995,7 @@ function App() {
                       </span>
                       <h3>{bounty.title}</h3>
                     </div>
-                    <div className="amount-chip">
-                      {bounty.amount} {bounty.tokenSymbol}
-                    </div>
+                    <BountyAmount bounty={bounty} />
                   </div>
 
                   <p className="bounty-summary">{bounty.summary}</p>
@@ -1197,9 +1228,7 @@ function App() {
                       <span className={`status-pill status-pill--${bounty.status}`}>{bounty.status}</span>
                       <h3>{bounty.title}</h3>
                     </div>
-                    <div className="amount-chip">
-                      {bounty.amount} {bounty.tokenSymbol}
-                    </div>
+                    <BountyAmount bounty={bounty} />
                   </div>
 
                   <p className="bounty-summary">{bounty.summary}</p>
