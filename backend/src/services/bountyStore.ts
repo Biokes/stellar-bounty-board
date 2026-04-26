@@ -687,3 +687,42 @@ export function getGlobalMetrics(): GlobalMetrics {
     uniqueContributors,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+export interface LeaderboardEntry {
+  address: string;
+  totalXlm: number;
+  bountiesCompleted: number;
+}
+
+/**
+ * Returns the top contributors ranked by total XLM received from released bounties.
+ * Ties are broken by bounties completed (higher first).
+ */
+export function getLeaderboard(limit: number = 10): LeaderboardEntry[] {
+  const released = listBounties().filter((b) => b.status === "released" && b.contributor);
+
+  // Group by contributor
+  const contributorMap = new Map<string, { totalXlm: number; count: number }>();
+  for (const bounty of released) {
+    const addr = bounty.contributor!;
+    const existing = contributorMap.get(addr) ?? { totalXlm: 0, count: 0 };
+    existing.totalXlm += bounty.amount;
+    existing.count += 1;
+    contributorMap.set(addr, existing);
+  }
+
+  // Sort: total XLM desc, then bounties completed desc
+  const sorted = [...contributorMap.entries()]
+    .map(([address, stats]) => ({
+      address,
+      totalXlm: stats.totalXlm,
+      bountiesCompleted: stats.count,
+    }))
+    .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted);
+
+  return sorted.slice(0, limit);
+}
