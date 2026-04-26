@@ -1,7 +1,8 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 
 import type { Bounty, BountyStatus } from "./types";
+import CopyIcon from "./CopyIcons";
 
 type BountyAction = "reserve" | "submit" | "release" | "refund";
 
@@ -12,7 +13,10 @@ type Props = {
   owner: string;
   avatarUrl: string;
   statusCopy: Record<BountyStatus, { label: string; description: string }>;
-  actionCopy: Record<BountyStatus, Array<{ action: BountyAction; label: string; title: string }>>;
+  actionCopy: Record<
+    BountyStatus,
+    Array<{ action: BountyAction; label: string; title: string }>
+  >;
   renderActionButton: (
     bounty: Bounty,
     action: { action: BountyAction; label: string; title: string },
@@ -31,6 +35,14 @@ export default function BountyDetailPage({
   renderActionButton,
   formatTimestamp,
 }: Props) {
+  const [bountyText, setBountyText] = useState("");
+  const [maintainerText, setMaintainerText] = useState("");
+  useEffect(() => {
+    if (bounty) {
+      setBountyText(bounty.id);
+      setMaintainerText(bounty.maintainer);
+    }
+  }, [bounty]);
   return (
     <div className="page-shell">
       <div className="glow glow-left" />
@@ -42,7 +54,12 @@ export default function BountyDetailPage({
             <span className="panel-kicker">Bounty</span>
             <h2>{bounty ? bounty.title : "Bounty"}</h2>
           </div>
-          <button type="button" className="secondary-button" onClick={onBack} disabled={loading}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBack}
+            disabled={loading}
+          >
             Back
           </button>
         </div>
@@ -54,7 +71,14 @@ export default function BountyDetailPage({
         ) : (
           <div className="bounty-detail__content">
             <div className="bounty-detail__hero">
-              {avatarUrl && <img className="repo-avatar" src={avatarUrl} alt={owner} loading="lazy" />}
+              {avatarUrl && (
+                <img
+                  className="repo-avatar"
+                  src={avatarUrl}
+                  alt={owner}
+                  loading="lazy"
+                />
+              )}
               <div>
                 <span
                   className={`status-pill status-pill--${bounty.status}`}
@@ -72,7 +96,10 @@ export default function BountyDetailPage({
             <div className="meta-grid meta-grid--detail">
               <div>
                 <span className="meta-label">Bounty ID</span>
-                <strong>{bounty.id}</strong>
+                <strong>
+                  {bounty.id}
+                  <CopyIcon text={bountyText} />
+                </strong>
               </div>
               <div>
                 <span className="meta-label">Issue</span>
@@ -97,7 +124,9 @@ export default function BountyDetailPage({
               </div>
               <div>
                 <span className="meta-label">Maintainer</span>
-                <strong>{bounty.maintainer}</strong>
+                <strong>
+                  {bounty.maintainer} <CopyIcon text={maintainerText} />
+                </strong>
               </div>
               <div>
                 <span className="meta-label">Contributor</span>
@@ -152,7 +181,12 @@ export default function BountyDetailPage({
             )}
 
             {bounty.submissionUrl && (
-              <a className="submission-link" href={bounty.submissionUrl} target="_blank" rel="noreferrer">
+              <a
+                className="submission-link"
+                href={bounty.submissionUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
                 Review submission <ArrowUpRight size={16} />
               </a>
             )}
@@ -164,11 +198,14 @@ export default function BountyDetailPage({
             )}
 
             <p className="status-helper">
-              <strong>{statusCopy[bounty.status].label}:</strong> {statusCopy[bounty.status].description}
+              <strong>{statusCopy[bounty.status].label}:</strong>{" "}
+              {statusCopy[bounty.status].description}
             </p>
 
             <div className="action-row action-row--detail">
-              {(actionCopy[bounty.status] ?? []).map((action) => renderActionButton(bounty, action))}
+              {(actionCopy[bounty.status] ?? []).map((action) =>
+                renderActionButton(bounty, action),
+              )}
             </div>
           </div>
         )}
