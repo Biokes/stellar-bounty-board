@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sendNotification, type NotificationRecipient } from "./notificationService";
+import { logStructured } from "../logger";
 
 export type BountyStatus =
   | "open"
@@ -725,4 +726,53 @@ export function getLeaderboard(limit: number = 10): LeaderboardEntry[] {
     .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted);
 
   return sorted.slice(0, limit);
+}
+
+const RESERVATION_TTL_SECONDS_DEFAULT = 7 * 24 * 60 * 60; // 7 days
+
+/**
+ * Runs on a configurable interval (default 1 hour) and returns reserved/submitted bounties
+ * to "open" status if their reservation has been held for more than RESERVATION_TTL_DAYS
+ * without a submission or release.
+ *
+ * Returns the number of bounties that were expired.
+ */
+export function expireStaleReservations(): number {
+  const ttlDays = Number(process.env.RESERVATION_TTL_DAYS) || 7;
+  const ttlSeconds = ttlDays * 24 * 60 * 60;
+  const now = Math.floor(Date.now() / 1000);
+  const bounties = listBounties();
+  let expiredCount = 0;
+
+  const updated = bounties.map((bounty) => {
+    if (bounty.status !== "reserved" && bounty.status !== "submitted") return bounty;
+    if (!bounty.reservedAt) return bounty;
+
+    const held = now - bounty.reservedAt;
+    if (held < ttlSeconds) return bounty;
+
+    expiredCount++;
+    logStructured("info", "reservation_expired", {
+      bountyId: bounty.id,
+      contributor: bounty.contributor,
+      heldSeconds: held,
+    });
+
+    return {
+      ...bounty,
+      status: "open" as const,
+      contributor: undefined,
+      reservedAt: undefined,
+      submittedAt: undefined,
+      submissionUrl: undefined,
+      notes: undefined,
+      version: (bounty.version || 1) + 1,
+    };
+  });
+
+  if (expiredCount > 0) {
+    writeStore(updated);
+  }
+
+  return expiredCount;
 }
