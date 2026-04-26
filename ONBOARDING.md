@@ -53,6 +53,55 @@ Make sure you have the following installed before you begin:
 
 ---
 
+## Quick Visual Overview
+
+Get a quick feel for the project architecture before diving into the code.
+
+### Video Walkthrough
+
+> 🎥 **Demo video coming soon!**  
+> A short walkthrough (2–3 min) covering the full workflow — create a bounty, reserve it, submit a PR, and release the payout — is being recorded.  
+> Check back or watch this space for the link.
+
+### Architecture Diagram
+
+The system follows a **three-layer architecture**:
+
+```mermaid
+graph TB
+    subgraph Frontend["Frontend (React + Vite)"]
+        UI[Dashboard UI]
+        API[API Client]
+    end
+
+    subgraph Backend["Backend (Node.js + Express)"]
+        REST[REST API Routes]
+        VAL[Zod Validators]
+        PERS[JSON Persistence]
+        WH[Webhook Handler]
+    end
+
+    subgraph Contract["Soroban Smart Contract"]
+        ESCROW[Escrow Logic]
+        EVENTS[Contract Events]
+        STATE[On-Chain State]
+    end
+
+    Frontend -->|HTTP /api| Backend
+    Backend -->|stellar contract invoke| Contract
+    Contract -->|Event Polling| Backend
+    User((Maintainer / Contributor)) -->|Browser| Frontend
+    GitHub((GitHub)) -->|Webhook| Backend
+```
+
+**Flow summary:**
+1. **Maintainer** creates a bounty via the UI → backend persists it → optionally deploys escrow via Soroban contract
+2. **Contributor** browses open bounties → reserves one → submits a PR link
+3. **Maintainer** reviews the PR → releases payout (or refunds)
+4. GitHub **webhooks** sync PR merge status automatically
+
+---
+
 ## 3. Getting the Code
 
 ```bash
