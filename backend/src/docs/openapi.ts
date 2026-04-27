@@ -222,6 +222,33 @@ registry.registerPath({
   },
 });
 
+const leaderboardEntrySchema = z
+  .object({
+    address: z.string().openapi({ example: "GBBB...BBB", description: "Contributor Stellar address." }),
+    totalXlm: z.number().openapi({ example: 350.5, description: "Total XLM received from released bounties." }),
+    bountiesCompleted: z.number().int().openapi({ example: 3, description: "Number of released bounties completed." }),
+  })
+  .openapi("LeaderboardEntry");
+
+registry.register("LeaderboardEntry", leaderboardEntrySchema);
+
+registry.registerPath({
+  method: "get",
+  path: "/api/leaderboard",
+  tags: ["Leaderboard"],
+  summary: "Contributor leaderboard",
+  description:
+    "Returns the top 10 contributors ranked by total XLM received from released bounties. " +
+    "Ties are broken by the number of bounties completed. " +
+    "Returns an empty array when no bounties have been released yet.",
+  responses: {
+    200: jsonResponse(
+      "Top 10 contributors by XLM earned.",
+      z.object({ data: z.array(leaderboardEntrySchema) }),
+    ),
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Generator
 // ---------------------------------------------------------------------------

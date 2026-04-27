@@ -60,7 +60,13 @@ export const createBountySchema = z
       .openapi({ example: "XLM", description: "Stellar token symbol for payout (1–12 alphanumeric chars)." }),
     amount: z.coerce
       .number()
-
+      .min(1, "Amount must be at least 1 XLM.")
+      .max(10000, "Amount must not exceed 10000 XLM.")
+      .refine(
+        (v) => Number.isFinite(v) && /^\d+(\.\d{1,7})?$/.test(String(v)),
+        "Amount must have at most 7 decimal places.",
+      )
+      .openapi({ example: 42.5, description: "Bounty reward amount (1–10000, up to 7 decimal places)." }),
     deadlineDays: z.coerce
       .number()
       .int()

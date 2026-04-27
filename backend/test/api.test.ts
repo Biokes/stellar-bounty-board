@@ -296,3 +296,97 @@ describe("API — bounty lifecycle routes", () => {
     expect(res.body.error).toMatch(/not found/i);
   });
 });
+
+describe("GET /api/leaderboard", () => {
+  it("returns empty array when no bounties exist", async () => {
+    const app = await getApp();
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it("returns empty array when bounties exist but none are released", async () => {
+    const app = await getApp();
+    await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it("returns contributor after a bounty is released", async () => {
+    const app = await getApp();
+    const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    const id = created.data.id as string;
+
+    await request(app).post(`/api/bounties/${id}/reserve`).send({ contributor: CONTRIBUTOR }).expect(200);
+    await request(app)
+      .post(`/api/bounties/${id}/submit`)
+      .send({ contributor: CONTRIBUTOR, submissionUrl: "https://github.com/owner/repo/pull/1" })
+      .expect(200);
+    await request(app).post(`/api/bounties/${id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBe(1);
+    const entry = res.body.data[0];
+    expect(entry.address).toBe(CONTRIBUTOR);
+    expect(entry.totalXlm).toBe(validCreateBody.amount);
+    expect(entry.bountiesCompleted).toBe(1);
+  });
+
+  it("aggregates multiple released bounties for the same contributor", async () => {
+    const app = await getApp();
+
+    for (let i = 0; i < 2; i++) {
+      const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+      const id = created.data.id as string;
+      await request(app).post(`/api/bounties/${id}/reserve`).send({ contributor: CONTRIBUTOR }).expect(200);
+      await request(app)
+        .post(`/api/bounties/${id}/submit`)
+        .send({ contributor: CONTRIBUTOR, submissionUrl: `https://github.com/owner/repo/pull/${i + 1}` })
+        .expect(200);
+      await request(app).post(`/api/bounties/${id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+    }
+
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].bountiesCompleted).toBe(2);
+    expect(res.body.data[0].totalXlm).toBeCloseTo(validCreateBody.amount * 2);
+  });
+
+  it("ranks higher XLM earner first", async () => {
+    const app = await getApp();
+
+    // CONTRIBUTOR gets one bounty released
+    const { body: c1 } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    await request(app).post(`/api/bounties/${c1.data.id}/reserve`).send({ contributor: CONTRIBUTOR }).expect(200);
+    await request(app).post(`/api/bounties/${c1.data.id}/submit`).send({ contributor: CONTRIBUTOR, submissionUrl: "https://github.com/o/r/pull/1" }).expect(200);
+    await request(app).post(`/api/bounties/${c1.data.id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+
+    // OTHER_ACCOUNT gets two bounties released (more XLM)
+    for (let i = 0; i < 2; i++) {
+      const { body: c2 } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+      await request(app).post(`/api/bounties/${c2.data.id}/reserve`).send({ contributor: OTHER_ACCOUNT }).expect(200);
+      await request(app).post(`/api/bounties/${c2.data.id}/submit`).send({ contributor: OTHER_ACCOUNT, submissionUrl: `https://github.com/o/r/pull/${i + 10}` }).expect(200);
+      await request(app).post(`/api/bounties/${c2.data.id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+    }
+
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    expect(res.body.data[0].address).toBe(OTHER_ACCOUNT);
+    expect(res.body.data[1].address).toBe(CONTRIBUTOR);
+  });
+
+  it("each entry has address, totalXlm, and bountiesCompleted fields", async () => {
+    const app = await getApp();
+    const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);
+    const id = created.data.id as string;
+
+    await request(app).post(`/api/bounties/${id}/reserve`).send({ contributor: CONTRIBUTOR }).expect(200);
+    await request(app).post(`/api/bounties/${id}/submit`).send({ contributor: CONTRIBUTOR, submissionUrl: "https://github.com/o/r/pull/1" }).expect(200);
+    await request(app).post(`/api/bounties/${id}/release`).send({ maintainer: MAINTAINER }).expect(200);
+
+    const res = await request(app).get("/api/leaderboard").expect(200);
+    const entry = res.body.data[0];
+    expect(entry).toHaveProperty("address");
+    expect(entry).toHaveProperty("totalXlm");
+    expect(entry).toHaveProperty("bountiesCompleted");
+  });
+});
