@@ -4,7 +4,7 @@ use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    vec, Address, Env, IntoVal, String,
+    Address, Env, IntoVal, String,
 };
 
 fn setup_test(env: &Env) -> (StellarBountyBoardContractClient<'static>, Address, Address, Address) {
@@ -159,6 +159,24 @@ fn test_create_bounty_negative_amount() {
         &1,
         &String::from_str(&env, "title"),
         &(env.ledger().timestamp() + 1000),
+    );
+}
+
+#[test]
+#[should_panic(expected = "DeadlineMustBeInTheFuture")]
+fn test_create_bounty_past_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, maintainer, _, token_id) = setup_test(&env);
+
+    client.create_bounty(
+        &maintainer,
+        &token_id,
+        &500,
+        &String::from_str(&env, "repo"),
+        &1,
+        &String::from_str(&env, "title"),
+        &env.ledger().timestamp(),
     );
 }
 
