@@ -11,6 +11,29 @@ const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL || "https://rpc-futurenet.st
 const POLL_INTERVAL_MS = 10000; // 10 seconds
 const INDEX_FILE = path.join(__dirname, "indexed-events.json");
 
+const MAX_RETRIES = 5;
+const INITIAL_BACKOFF_MS = 1000;
+
+// Retry wrapper with exponential backoff
+async function retryWithBackoff(fn, maxRetries = MAX_RETRIES) {
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+        console.log(`[Indexer] Retry attempt ${attempt + 1}/${maxRetries} after ${backoffMs}ms. Error: ${err.message}`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      } else {
+        console.error(`[Indexer] All ${maxRetries} retries exhausted. Last error:`, err.message);
+      }
+    }
+  }
+  throw lastError;
+}
+
 // Event normalization mapping
 function normalizeEvent(event) {
   // Example: map Soroban event to backend-friendly record
@@ -41,13 +64,14 @@ function loadLastEventId() {
 async function pollEvents() {
   let lastEventId = loadLastEventId();
   try {
-    // Replace with actual Soroban event fetch logic
-    const res = await axios.get(`${SOROBAN_RPC_URL}/events`, {
-      params: {
-        contract_id: CONTRACT_ID,
-        from_id: lastEventId,
-      },
-    });
+    const res = await retryWithBackoff(() =>
+      axios.get(`${SOROBAN_RPC_URL}/events`, {
+        params: {
+          contract_id: CONTRACT_ID,
+          from_id: lastEventId,
+        },
+      })
+    );
     const events = res.data.events || [];
     if (events.length) {
       const normalized = events.map(normalizeEvent);
@@ -62,7 +86,7 @@ async function pollEvents() {
       console.log("[Indexer] No new events.");
     }
   } catch (err) {
-    console.error("[Indexer] Polling error:", err.message);
+    console.error("[Indexer] Polling failed after all retries:", err.message);
   }
 }
 

@@ -125,8 +125,3 @@ Suggested first issues:
 
 
 
----
-
-## Auto-generated contribution
-
-Added by bounty bot.

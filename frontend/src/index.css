@@ -16,6 +16,23 @@
   --shadow: 0 24px 80px rgba(60, 43, 17, 0.12);
 }
 
+/* ── Dark mode ─────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111614;
+  --surface: rgba(24, 30, 27, 0.92);
+  --surface-strong: #1e2922;
+  --ink: #e8f0ec;
+  --muted: #8aa099;
+  --line: rgba(200, 220, 210, 0.1);
+  --mint: #34c994;
+  --mint-soft: rgba(52, 201, 148, 0.15);
+  --amber: #f4a24a;
+  --amber-soft: rgba(244, 162, 74, 0.15);
+  --rose: #e07878;
+  --shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -33,6 +50,14 @@ body {
     linear-gradient(180deg, #f9f2e7 0%, #f3e9db 100%);
   color: var(--ink);
   font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(244, 162, 74, 0.08), transparent 28%),
+    radial-gradient(circle at 85% 10%, rgba(52, 201, 148, 0.07), transparent 24%),
+    linear-gradient(180deg, #111614 0%, #0d1512 100%);
 }
 
 a {
@@ -91,6 +116,31 @@ textarea {
   gap: 20px;
   align-items: stretch;
   margin-bottom: 24px;
+  position: relative;
+}
+
+/* ── Dark mode toggle ─────────────────────────────────────────────────── */
+.dark-mode-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 6px 10px;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  z-index: 5;
+}
+
+.dark-mode-toggle:hover {
+  background: var(--mint-soft);
+  border-color: var(--mint);
+  color: var(--mint);
 }
 
 .hero-copy,
@@ -646,6 +696,29 @@ select {
   word-break: break-word;
 }
 
+.copyable-meta-value {
+  display: grid;
+  gap: 8px;
+}
+
+.copy-meta-button {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(30, 143, 111, 0.16);
+  border-radius: 999px;
+  background: var(--mint-soft);
+  color: #0d4736;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.copy-meta-button:hover {
+  transform: translateY(-1px);
+}
+
 .chip-row--spaced {
   margin-top: 6px;
 }
@@ -770,9 +843,17 @@ select {
 .impact-chip {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   border-radius: 999px;
   padding: 7px 11px;
   font-size: 0.85rem;
+}
+
+.usd-amount {
+  font-size: 0.75rem;
+  opacity: 0.65;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 400;
 }
 
 .status-pill {
@@ -1135,4 +1216,170 @@ select {
   }
 }
 
+/* ── Copy-to-clipboard ────────────────────────────────────────────────── */
+
+.copy-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  word-break: break-all;
+}
+
+.copy-button-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.copy-button:hover {
+  color: var(--mint);
+  border-color: var(--mint);
+  background: var(--mint-soft);
+}
+
+.copy-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tooltip-fade-in 0.12s ease;
+  z-index: 10;
+}
+
+.copy-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--ink);
+}
+
+@keyframes tooltip-fade-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── Activity Timeline ────────────────────────────────────────────────── */
+
+.bounty-timeline {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.bounty-timeline__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 20px;
+  color: var(--ink);
+}
+
+.bounty-timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.bounty-timeline__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  position: relative;
+  padding-bottom: 20px;
+}
+
+.bounty-timeline__item:last-child {
+  padding-bottom: 0;
+}
+
+.bounty-timeline__item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 18px;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.bounty-timeline__dot {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  border: 2px solid var(--line);
+  margin-top: 2px;
+}
+
+.bounty-timeline__item--created .bounty-timeline__dot  { border-color: var(--mint); background: var(--mint-soft); }
+.bounty-timeline__item--reserved .bounty-timeline__dot { border-color: var(--amber); background: var(--amber-soft); }
+.bounty-timeline__item--submitted .bounty-timeline__dot { border-color: #7b5ea7; background: #f0eaf8; }
+.bounty-timeline__item--released .bounty-timeline__dot  { border-color: var(--mint); background: var(--mint); }
+.bounty-timeline__item--refunded .bounty-timeline__dot  { border-color: var(--rose); background: #f9ece9; }
+.bounty-timeline__item--expired .bounty-timeline__dot   { border-color: var(--muted); background: var(--line); }
+
+.bounty-timeline__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bounty-timeline__event {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bounty-timeline__time {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.bounty-timeline__actor {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 /* ---- End submission checklist modal ---- */
+
+/* ── Skill-tag filter row (recommendations panel, #75) ────────────────── */
+
+.tag-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
