@@ -215,7 +215,37 @@ fn test_expiration() {
 }
 
 #[test]
-#[should_panic(expected = "bounty is not open")]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_double_reserve_bounty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&maintainer, &1000);
+
+    let bounty_id = client.create_bounty(
+        &maintainer,
+        &token_id,
+        &500,
+        &String::from_str(&env, "repo"),
+        &1,
+        &String::from_str(&env, "title"),
+        &(env.ledger().timestamp() + 1000),
+    );
+
+    // First reservation should succeed
+    client.reserve_bounty(&bounty_id, &contributor);
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.status, BountyStatus::Reserved);
+
+    // Second reservation attempt should panic with Error::BountyNotOpen (code #1)
+    // because the bounty is no longer in Open status
+    client.reserve_bounty(&bounty_id, &contributor);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn test_reserve_expired_bounty() {
     let env = Env::default();
     env.mock_all_auths();
@@ -241,4 +271,96 @@ fn test_reserve_expired_bounty() {
     });
 
     client.reserve_bounty(&bounty_id, &contributor);
+}
+
+#[test]
+fn test_extend_deadline_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, maintainer, _, token_id) = setup_test(&env);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&maintainer, &1000);
+
+    let initial_deadline = env.ledger().timestamp() + 1000;
+    let bounty_id = client.create_bounty(
+        &maintainer,
+        &token_id,
+        &500,
+        &String::from_str(&env, "repo"),
+        &1,
+        &String::from_str(&env, "title"),
+        &initial_deadline,
+    );
+
+    let new_deadline = initial_deadline + 5000;
+    client.extend_deadline(&bounty_id, &maintainer, &new_deadline);
+
+    let bounty = client.get_bounty(&bounty_id);
+    assert_eq!(bounty.deadline, new_deadline);
+
+    // Verify event
+    let events = env.events().all();
+    let last_event = events.last().unwrap();
+    assert_eq!(last_event.0, client.address);
+    assert_eq!(
+        last_event.1,
+        (symbol_short!("Bounty"), symbol_short!("Extnd")).into_val(&env)
+    );
+    let event_data: BountyDeadlineExtended = last_event.2.into_val(&env);
+    assert_eq!(event_data.bounty_id, bounty_id);
+    assert_eq!(event_data.new_deadline, new_deadline);
+}
+
+#[test]
+#[should_panic(expected = "maintainer mismatch")]
+fn test_extend_deadline_wrong_caller() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&maintainer, &1000);
+
+    let initial_deadline = env.ledger().timestamp() + 1000;
+    let bounty_id = client.create_bounty(
+        &maintainer,
+        &token_id,
+        &500,
+        &String::from_str(&env, "repo"),
+        &1,
+        &String::from_str(&env, "title"),
+        &initial_deadline,
+    );
+
+    let new_deadline = initial_deadline + 5000;
+    
+    // Attempting to extend using the contributor's address instead of the maintainer
+    client.extend_deadline(&bounty_id, &contributor, &new_deadline);
+}
+
+#[test]
+#[should_panic(expected = "new deadline must be greater than current deadline")]
+fn test_extend_deadline_earlier() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, maintainer, _, token_id) = setup_test(&env);
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&maintainer, &1000);
+
+    let initial_deadline = env.ledger().timestamp() + 1000;
+    let bounty_id = client.create_bounty(
+        &maintainer,
+        &token_id,
+        &500,
+        &String::from_str(&env, "repo"),
+        &1,
+        &String::from_str(&env, "title"),
+        &initial_deadline,
+    );
+
+    // Attempting to set a deadline earlier than the initial one
+    let earlier_deadline = initial_deadline - 100;
+    client.extend_deadline(&bounty_id, &maintainer, &earlier_deadline);
 }

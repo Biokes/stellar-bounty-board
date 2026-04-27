@@ -4,8 +4,8 @@
 mod test;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token::Client as TokenClient, Address, Env,
-    String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::Client as TokenClient, Address, Env, String,
 };
 
 #[contracttype]
@@ -77,6 +77,21 @@ pub struct BountyRefunded {
     pub bounty_id: u64,
     pub maintainer: Address,
     pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BountyDeadlineExtended {
+    pub bounty_id: u64,
+    pub new_deadline: u64,
+}
+
+#[contracterror]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Error {
+    BountyNotOpen = 1,
+    BountyNotFound = 2,
+    BountyAlreadyReserved = 3,
 }
 
 #[contract]
@@ -153,7 +168,7 @@ impl StellarBountyBoardContract {
         expire_if_needed(&env, &mut bounty);
 
         if bounty.status != BountyStatus::Open {
-            panic!("bounty is not open");
+            panic_with_error!(&env, Error::BountyNotOpen);
         }
 
         bounty.contributor = Some(contributor.clone());
@@ -261,6 +276,30 @@ impl StellarBountyBoardContract {
         );
     }
 
+    pub fn extend_deadline(env: Env, bounty_id: u64, maintainer: Address, new_deadline: u64) {
+        maintainer.require_auth();
+        let mut bounty = read_bounty(&env, bounty_id);
+
+        if bounty.maintainer != maintainer {
+            panic!("maintainer mismatch");
+        }
+
+        if new_deadline <= bounty.deadline {
+            panic!("new deadline must be greater than current deadline");
+        }
+
+        bounty.deadline = new_deadline;
+        write_bounty(&env, bounty_id, &bounty);
+
+        env.events().publish(
+            (symbol_short!("Bounty"), symbol_short!("Extnd")),
+            BountyDeadlineExtended {
+                bounty_id,
+                new_deadline,
+            },
+        );
+    }
+
     pub fn get_bounty(env: Env, bounty_id: u64) -> Bounty {
         let mut bounty = read_bounty(&env, bounty_id);
         expire_if_needed(&env, &mut bounty);
@@ -294,4 +333,3 @@ fn expire_if_needed(env: &Env, bounty: &mut Bounty) {
         bounty.status = BountyStatus::Expired;
     }
 }
-

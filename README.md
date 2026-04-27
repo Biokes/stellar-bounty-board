@@ -113,6 +113,18 @@ The Soroban contract models the escrow lifecycle:
 
 The backend currently acts as the demo control plane, while the contract gives you a clear path to move the source of truth on-chain.
 
+### Contract Error Codes
+
+The Soroban contract uses a named error enum (`Error`) for recoverable failures:
+
+| Code | Variant            | Description                                            |
+|------|--------------------|--------------------------------------------------------|
+| 1    | `BountyNotOpen`    | Bounty reservation failed because the bounty is not in `Open` status (already reserved, expired, etc.) |
+| 2    | `BountyNotFound`   | The specified bounty ID does not exist                 |
+| 3    | `BountyAlreadyReserved` | The bounty is already reserved by another contributor |
+
+These errors are invoked via `panic_with_error!` and surface as `Error(Contract, #N)` in test expectations.
+
 ## Contribution Hooks
 
 Contribution-ready issue drafts live in `docs/issues`.
@@ -122,4 +134,5 @@ Suggested first issues:
 - GitHub webhook sync for PR state
 - Event indexer for contract payouts
 - Postgres persistence and audit log support
+
 
