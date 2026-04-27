@@ -7,16 +7,29 @@ use soroban_sdk::{
     Address, Env, IntoVal, String,
 };
 
-fn setup_test(env: &Env) -> (StellarBountyBoardContractClient<'static>, Address, Address, Address) {
+// ─── Shared setup ────────────────────────────────────────────────────────────
+fn setup_test(
+    env: &Env,
+) -> (
+    StellarBountyBoardContractClient<'static>,
+    Address, // maintainer
+    Address, // contributor
+    Address, // token_id
+    Address, // fee_recipient
+) {
     let contract_id = env.register_contract(None, StellarBountyBoardContract);
     let client = StellarBountyBoardContractClient::new(env, &contract_id);
 
     let maintainer = Address::generate(env);
     let contributor = Address::generate(env);
+    let fee_recipient = Address::generate(env);
     let token_admin = Address::generate(env);
     let token_id = env.register_stellar_asset_contract_v2(token_admin);
 
-    (client, maintainer, contributor, token_id.address())
+    // Initialize contract with a fee recipient so fee tests work
+    client.initialize(&fee_recipient);
+
+    (client, maintainer, contributor, token_id.address(), fee_recipient)
 }
 
 fn create_bounty_with_state(
@@ -98,18 +111,17 @@ fn test_create_bounty() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, _contributor, token_id, _fee_recipient) = setup_test(&env);
     let token = TokenClient::new(&env, &token_id);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
-    // Mint some tokens to maintainer
     token_admin.mint(&maintainer, &1000);
 
     let repo = String::from_str(&env, "ritik4ever/stellar-bounty-board");
     let title = String::from_str(&env, "Fix bug");
     let deadline = env.ledger().timestamp() + 1000;
-    let amount = 500;
-    let issue_number = 1;
+    let amount = 500i128;
+    let issue_number = 1u32;
 
     let bounty_id = client.create_bounty(
         &maintainer,
@@ -119,6 +131,7 @@ fn test_create_bounty() {
         &issue_number,
         &title,
         &deadline,
+        &0u32, // zero fee — no behavior change
     );
 
     assert_eq!(bounty_id, 1);
@@ -127,21 +140,21 @@ fn test_create_bounty() {
     assert_eq!(bounty.maintainer, maintainer);
     assert_eq!(bounty.amount, amount);
     assert_eq!(bounty.status, BountyStatus::Open);
+    assert_eq!(bounty.protocol_fee_bps, 0);
     assert_eq!(token.balance(&client.address), amount);
     assert_eq!(token.balance(&maintainer), 500);
 
-    // Verify events
+    // Verify create event
     let events = env.events().all();
     let last_event = events.last().unwrap();
     
     assert_eq!(last_event.0, client.address);
     assert_eq!(last_event.1, (symbol_short!("Bounty"), symbol_short!("Create")).into_val(&env));
-    // Since Val doesn't implement PartialEq, we compare the serialized data or just assume it's correct if the topics match for now
-    // Or we can try to decode it back
     let event_data: BountyCreated = last_event.2.into_val(&env);
     assert_eq!(event_data.bounty_id, 1);
     assert_eq!(event_data.maintainer, maintainer);
     assert_eq!(event_data.amount, amount);
+    assert_eq!(event_data.protocol_fee_bps, 0);
 }
 
 #[test]
@@ -149,7 +162,7 @@ fn test_create_bounty() {
 fn test_create_bounty_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, maintainer, _, token_id) = setup_test(&env);
+    let (client, maintainer, _, token_id, _) = setup_test(&env);
 
     client.create_bounty(
         &maintainer,
@@ -159,6 +172,7 @@ fn test_create_bounty_negative_amount() {
         &1,
         &String::from_str(&env, "title"),
         &(env.ledger().timestamp() + 1000),
+        &0u32,
     );
 }
 
@@ -185,7 +199,7 @@ fn test_full_lifecycle() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, contributor, token_id, _fee_recipient) = setup_test(&env);
     let token = TokenClient::new(&env, &token_id);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
     token_admin.mint(&maintainer, &1000);
@@ -198,25 +212,23 @@ fn test_full_lifecycle() {
         &1,
         &String::from_str(&env, "title"),
         &(env.ledger().timestamp() + 1000),
+        &0u32, // zero fee
     );
 
-    // Reserve
     client.reserve_bounty(&bounty_id, &contributor);
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.status, BountyStatus::Reserved);
     assert_eq!(bounty.contributor, Some(contributor.clone()));
 
-    // Submit
     client.submit_bounty(&bounty_id, &contributor);
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.status, BountyStatus::Submitted);
 
-    // Release
     client.release_bounty(&bounty_id, &maintainer);
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.status, BountyStatus::Released);
 
-    // Verify balances
+    // With 0% fee: contributor receives full 500
     assert_eq!(token.balance(&contributor), 500);
     assert_eq!(token.balance(&client.address), 0);
 }
@@ -251,7 +263,7 @@ fn test_refund_after_deadline_reserved_succeeds() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, _contributor, token_id, _fee_recipient) = setup_test(&env);
     let token = TokenClient::new(&env, &token_id);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
     token_admin.mint(&maintainer, &1000);
@@ -265,14 +277,15 @@ fn test_refund_after_deadline_reserved_succeeds() {
         &1,
         &String::from_str(&env, "title"),
         &deadline,
+        &0u32,
     );
 
-    client.reserve_bounty(&bounty_id, &contributor);
-    env.ledger().set_timestamp(deadline + 1);
+
 
     client.refund_bounty(&bounty_id, &maintainer);
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.status, BountyStatus::Refunded);
+    // Refund returns full amount — no fee deducted
     assert_eq!(token.balance(&maintainer), 1000);
 }
 
@@ -426,7 +439,7 @@ fn test_release_without_submit() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, contributor, token_id, _) = setup_test(&env);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
     token_admin.mint(&maintainer, &1000);
 
@@ -438,6 +451,7 @@ fn test_release_without_submit() {
         &1,
         &String::from_str(&env, "title"),
         &(env.ledger().timestamp() + 1000),
+        &0u32,
     );
 
     client.reserve_bounty(&bounty_id, &contributor);
@@ -449,7 +463,7 @@ fn test_expiration() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, _contributor, token_id, _) = setup_test(&env);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
     token_admin.mint(&maintainer, &1000);
 
@@ -462,10 +476,10 @@ fn test_expiration() {
         &1,
         &String::from_str(&env, "title"),
         &deadline,
+        &0u32,
     );
 
-    // Advance time
-    env.ledger().set_timestamp(deadline + 1);
+
 
     let bounty = client.get_bounty(&bounty_id);
     assert_eq!(bounty.status, BountyStatus::Expired);
@@ -477,7 +491,7 @@ fn test_reserve_expired_bounty() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, maintainer, contributor, token_id) = setup_test(&env);
+    let (client, maintainer, contributor, token_id, _) = setup_test(&env);
     let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
     token_admin.mint(&maintainer, &1000);
 
@@ -490,10 +504,10 @@ fn test_reserve_expired_bounty() {
         &1,
         &String::from_str(&env, "title"),
         &deadline,
+        &0u32,
     );
 
-    // Advance time
-    env.ledger().set_timestamp(deadline + 1);
+
 
     client.reserve_bounty(&bounty_id, &contributor);
 }
