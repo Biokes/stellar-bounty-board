@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 
-import type { Bounty, BountyStatus } from "./types";
+import type { Bounty, BountyEvent, BountyStatus, EventType } from "./types";
 
 type BountyAction = "reserve" | "submit" | "release" | "refund";
 
@@ -20,6 +20,15 @@ type Props = {
   formatTimestamp: (value?: number) => string;
 };
 
+const timelineLabels: Record<EventType, string> = {
+  created: "Created",
+  reserved: "Reserved",
+  submitted: "Submitted",
+  released: "Released",
+  refunded: "Refunded",
+  expired: "Expired",
+};
+
 export default function BountyDetailPage({
   bounty,
   loading,
@@ -31,6 +40,49 @@ export default function BountyDetailPage({
   renderActionButton,
   formatTimestamp,
 }: Props) {
+  const timelineEvents = bounty ? [...(bounty.events ?? [])] : [];
+  if (bounty?.createdAt && !timelineEvents.some((event) => event.type === "created")) {
+    timelineEvents.push({ type: "created", timestamp: bounty.createdAt });
+  }
+  const sortedTimeline = timelineEvents
+    .filter((event) => Number.isFinite(event.timestamp))
+    .sort((first, second) => first.timestamp - second.timestamp);
+  const hasTimelineActivity = sortedTimeline.some((event) => event.type !== "created");
+
+  const renderEventDetail = (event: BountyEvent) => {
+    if (!bounty) {
+      return null;
+    }
+
+    switch (event.type) {
+      case "reserved": {
+        const reserver = event.actor ?? bounty.contributor;
+        return reserver ? `Reserved by ${reserver}.` : "Reserved.";
+      }
+      case "submitted": {
+        const submissionUrl =
+          typeof event.details?.submissionUrl === "string" ? event.details.submissionUrl : bounty.submissionUrl;
+        if (!submissionUrl) {
+          return "Submission received.";
+        }
+        return (
+          <>
+            Submission PR: {" "}
+            <a className="inline-link" href={submissionUrl} target="_blank" rel="noreferrer">
+              View pull request
+            </a>
+          </>
+        );
+      }
+      case "released":
+        return "Funds released to contributor.";
+      case "refunded":
+        return "Bounty refunded to maintainer.";
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="page-shell">
       <div className="glow glow-left" />
@@ -169,6 +221,33 @@ export default function BountyDetailPage({
 
             <div className="action-row action-row--detail">
               {(actionCopy[bounty.status] ?? []).map((action) => renderActionButton(bounty, action))}
+            </div>
+
+            <div className="timeline-section">
+              <div className="timeline-header">
+                <div>
+                  <span className="panel-kicker">Activity</span>
+                  <h3>Timeline</h3>
+                </div>
+              </div>
+              {hasTimelineActivity ? (
+                <div className="timeline-list">
+                  {sortedTimeline.map((event, index) => (
+                    <div className="timeline-item" key={`${event.type}-${event.timestamp}-${index}`}>
+                      <span className={`timeline-dot timeline-dot--${event.type}`} />
+                      <div className="timeline-content">
+                        <div className="timeline-top">
+                          <strong>{timelineLabels[event.type] ?? "Update"}</strong>
+                          <span className="timeline-time">{formatTimestamp(event.timestamp)}</span>
+                        </div>
+                        {renderEventDetail(event) && <p>{renderEventDetail(event)}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state timeline-empty">No activity yet beyond creation.</div>
+              )}
             </div>
           </div>
         )}
