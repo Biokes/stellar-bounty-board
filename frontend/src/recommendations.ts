@@ -14,6 +14,69 @@ export interface ContributorProfile {
     min: number;
     max: number;
   };
+  /** Declared skill tags the contributor has (e.g. ["React", "TypeScript", "Rust"]) */
+  skills: string[];
+}
+
+/**
+ * Score how well a bounty matches a contributor's declared skill tags.
+ * Compares the contributor's skills against the bounty's labels and (optionally) tags.
+ * Returns a normalized score between 0 and 1.
+ *
+ * @param bounty - The bounty to evaluate
+ * @param skills - Array of contributor skill strings (case-insensitive)
+ * @returns Normalized match score 0-1
+ */
+export function scoreMatch(bounty: Bounty, skills: string[]): number {
+  if (!skills || skills.length === 0) return 0;
+
+  // Collect all text tokens from the bounty that could indicate skill relevance
+  const bountyTokens: string[] = bounty.labels.map((l) => l.name.toLowerCase());
+
+  // Also include bounty.tags if present (used in RecommendedBounties.tsx)
+  if (Array.isArray((bounty as Record<string, unknown>).tags)) {
+    const tags = (bounty as Record<string, unknown>).tags as string[];
+    bountyTokens.push(...tags.map((t: string) => t.toLowerCase()));
+  }
+
+  // Include title and summary for broader matching
+  bountyTokens.push(bounty.title.toLowerCase());
+  bountyTokens.push(bounty.summary.toLowerCase());
+
+  // Also split multi-word tokens for partial matching
+  const expandedTokens = new Set<string>();
+  for (const token of bountyTokens) {
+    if (token.length === 0) continue;
+    expandedTokens.add(token);
+    // Split on non-alphanumeric boundaries to catch e.g. "react" in "react-native"
+    for (const part of token.split(/[^a-z0-9#+.]+/)) {
+      if (part.length >= 2) expandedTokens.add(part);
+    }
+  }
+
+  // Normalize skills to lower case
+  const normalizedSkills = skills.map((s) => s.toLowerCase().trim()).filter(Boolean);
+
+  if (normalizedSkills.length === 0) return 0;
+
+  // Count matching skills
+  let matchCount = 0;
+  for (const skill of normalizedSkills) {
+    // Check exact match in any token
+    if (expandedTokens.has(skill)) {
+      matchCount++;
+      continue;
+    }
+    // Check if skill is contained within any token (e.g. skill "js" in "node.js")
+    for (const token of expandedTokens) {
+      if (token.includes(skill) || skill.includes(token)) {
+        matchCount++;
+        break;
+      }
+    }
+  }
+
+  return normalizedSkills.length > 0 ? matchCount / normalizedSkills.length : 0;
 }
 
 const LABEL_WEIGHTS: Record<string, number> = {
@@ -55,7 +118,7 @@ export function calculateRecommendationScore(
 
   // Label-based scoring
   const labelScore = bounty.labels.reduce((acc, label) => {
-    const normalizedLabel = label.toLowerCase();
+    const normalizedLabel = label.name.toLowerCase();
     const weight = LABEL_WEIGHTS[normalizedLabel] || 0.1;
     
     if (profile.completedLabels.includes(normalizedLabel)) {
@@ -86,6 +149,14 @@ export function calculateRecommendationScore(
     totalScore += REWARD_WEIGHT;
     maxPossibleScore += REWARD_WEIGHT;
     reasons.push(`Reward matches your typical range`);
+  }
+
+  // Skill-matching score (Wave 4, #120)
+  const skillScore = scoreMatch(bounty, profile.skills);
+  if (skillScore > 0) {
+    totalScore += skillScore * 0.5; // Weighted contribution up to 0.5
+    maxPossibleScore += 0.5;
+    reasons.push(`Matches ${Math.round(skillScore * 100)}% of your skills`);
   }
 
   // Status weighting
@@ -131,6 +202,7 @@ export function createDefaultProfile(): ContributorProfile {
       min: 0,
       max: 1000,
     },
+    skills: [],
   };
 }
 
@@ -143,7 +215,7 @@ export function updateProfileFromBounties(
   // Update completed labels
   const newLabels = completedBounties
     .filter(bounty => bounty.status === "released")
-    .flatMap(bounty => bounty.labels.map(label => label.toLowerCase()));
+    .flatMap(bounty => bounty.labels.map(label => label.name.toLowerCase()));
   
   updatedProfile.completedLabels = [...new Set([...profile.completedLabels, ...newLabels])];
 
@@ -163,6 +235,23 @@ export function updateProfileFromBounties(
       max: Math.max(...amounts),
     };
   }
+
+  // Infer skills from completed bounty labels (Wave 4, #120)
+  const inferredSkills = new Set<string>(profile.skills);
+  // Tech-related labels are likely skills (exclude generic labels)
+  const skillKeywords = ["react", "typescript", "javascript", "rust", "python", "solidity",
+    "stellar", "blockchain", "frontend", "backend", "docs", "testing", "node.js",
+    "node", "api", "css", "html", "docker", "graphql", "web3", "smart-contract"];
+  for (const label of newLabels) {
+    if (skillKeywords.includes(label)) {
+      // Capitalize first letter for consistency with KNOWN_TAGS
+      const skill = label.charAt(0).toUpperCase() + label.slice(1);
+      if (skill === "Docs") inferredSkills.add("Docs");
+      else if (skill === "Node.js") inferredSkills.add("Node.js");
+      else inferredSkills.add(skill);
+    }
+  }
+  updatedProfile.skills = [...inferredSkills];
 
   return updatedProfile;
 }
