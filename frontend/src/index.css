@@ -731,6 +731,127 @@ select {
   flex: 0 1 auto;
 }
 
+/* ---- Bounty activity timeline ---- */
+
+.timeline-section {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+
+.timeline-header {
+  margin-bottom: 16px;
+}
+
+.timeline-header h3 {
+  margin: 6px 0 0;
+  font-size: 1.1rem;
+}
+
+.timeline-list {
+  position: relative;
+  display: grid;
+  gap: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-left: 20px;
+}
+
+.timeline-list::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--line);
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px 0;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+  margin-top: 5px;
+  position: relative;
+  z-index: 1;
+  margin-left: -20px;
+}
+
+.timeline-dot--created {
+  background: #1f2421;
+}
+
+.timeline-dot--reserved {
+  background: #4b7fc4;
+  border-color: #e4eefb;
+}
+
+.timeline-dot--submitted {
+  background: #d9802e;
+  border-color: #ffe8cf;
+}
+
+.timeline-dot--released {
+  background: #3a8f2a;
+  border-color: #e5f6df;
+}
+
+.timeline-dot--refunded,
+.timeline-dot--expired {
+  background: #b8554b;
+  border-color: #f7e4df;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-content p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.timeline-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.timeline-top strong {
+  font-size: 0.95rem;
+}
+
+.timeline-time {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.timeline-empty {
+  margin-top: 8px;
+}
+
+/* ---- End bounty activity timeline ---- */
+
 .github-issue-card {
   border-radius: 22px;
   border: 1px solid rgba(54, 63, 59, 0.12);
