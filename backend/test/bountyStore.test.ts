@@ -45,7 +45,7 @@ describe("bountyStore lifecycle — happy paths", () => {
       listBounties,
     } = await loadStore();
 
-    const created = createBounty({
+    const created = await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner on slow networks",
@@ -61,12 +61,12 @@ describe("bountyStore lifecycle — happy paths", () => {
     expect(created.id).toMatch(/^BNT-\d{4}$/);
     expect(created.tokenSymbol).toBe("USDC");
 
-    const reserved = reserveBounty(created.id, CONTRIBUTOR);
+    const reserved = await reserveBounty(created.id, CONTRIBUTOR);
     expect(reserved.status).toBe("reserved");
     expect(reserved.contributor).toBe(CONTRIBUTOR);
     expect(reserved.reservedAt).toBeDefined();
 
-    const submitted = submitBounty(
+    const submitted = await submitBounty(
       created.id,
       CONTRIBUTOR,
       "https://github.com/acme/widget/pull/42",
@@ -77,7 +77,7 @@ describe("bountyStore lifecycle — happy paths", () => {
     expect(submitted.submittedAt).toBeDefined();
 
     const txHash = "c".repeat(64);
-    const released = releaseBounty(created.id, MAINTAINER, txHash);
+    const released = await releaseBounty(created.id, MAINTAINER, txHash);
     expect(released.status).toBe("released");
     expect(released.releasedAt).toBeDefined();
     expect(released.releasedTxHash).toBe(txHash);
@@ -99,7 +99,7 @@ describe("bountyStore lifecycle — happy paths", () => {
 
   it("create → refund from open", async () => {
     const { createBounty, refundBounty } = await loadStore();
-    const created = createBounty({
+    const created = await createBounty({
       repo: "acme/widget",
       issueNumber: 2,
       title: "Another bounty title with enough length",
@@ -112,7 +112,7 @@ describe("bountyStore lifecycle — happy paths", () => {
     });
 
     const txHash = "d".repeat(64);
-    const refunded = refundBounty(created.id, MAINTAINER, txHash);
+    const refunded = await refundBounty(created.id, MAINTAINER, txHash);
     expect(refunded.status).toBe("refunded");
     expect(refunded.refundedAt).toBeDefined();
     expect(refunded.refundedTxHash).toBe(txHash);
@@ -120,7 +120,7 @@ describe("bountyStore lifecycle — happy paths", () => {
 
   it("create → reserve → refund", async () => {
     const { createBounty, reserveBounty, refundBounty } = await loadStore();
-    const created = createBounty({
+    const created = await createBounty({
       repo: "acme/widget",
       issueNumber: 3,
       title: "Third bounty title with sufficient chars",
@@ -131,8 +131,8 @@ describe("bountyStore lifecycle — happy paths", () => {
       deadlineDays: 7,
       labels: [],
     });
-    reserveBounty(created.id, CONTRIBUTOR);
-    const refunded = refundBounty(created.id, MAINTAINER);
+    await reserveBounty(created.id, CONTRIBUTOR);
+    const refunded = await refundBounty(created.id, MAINTAINER);
     expect(refunded.status).toBe("refunded");
   });
 
@@ -140,7 +140,7 @@ describe("bountyStore lifecycle — happy paths", () => {
     const { createBounty, reserveBounty, submitBounty, releaseBounty, listBountyAuditLogs } =
       await loadStore();
 
-    const created = createBounty({
+    const created = await createBounty({
       repo: "acme/widget",
       issueNumber: 4,
       title: "Pagination test bounty title with enough chars",
@@ -152,9 +152,9 @@ describe("bountyStore lifecycle — happy paths", () => {
       labels: [],
     });
 
-    reserveBounty(created.id, CONTRIBUTOR);
-    submitBounty(created.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/44");
-    releaseBounty(created.id, MAINTAINER);
+    await reserveBounty(created.id, CONTRIBUTOR);
+    await submitBounty(created.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/44");
+    await releaseBounty(created.id, MAINTAINER);
 
     const first = listBountyAuditLogs(created.id, { limit: 2, offset: 0 });
     expect(first.data).toHaveLength(2);
@@ -184,6 +184,8 @@ describe("bountyStore — expiration via normalizeRecords", () => {
       status: "open",
       createdAt: 100,
       deadlineAt: 1,
+      version: 1,
+      events: [{ type: "created", timestamp: 100 }],
     };
     fs.writeFileSync(storeFile, JSON.stringify([record]), "utf8");
 
@@ -220,26 +222,31 @@ describe("bountyStore — expiration via normalizeRecords", () => {
       createdAt: 100,
       deadlineAt: 1,
       reservedAt: 50,
+      version: 2,
+      events: [
+        { type: "created", timestamp: 100 },
+        { type: "reserved", timestamp: 150, actor: CONTRIBUTOR },
+      ],
     };
     fs.writeFileSync(storeFile, JSON.stringify([record]), "utf8");
 
     const { listBounties, reserveBounty } = await loadStore();
     expect(listBounties()[0].status).toBe("expired");
-    expect(() => reserveBounty("BNT-0001", CONTRIBUTOR)).toThrow(/only open/i);
+    await expect(async () => await reserveBounty("BNT-0001", CONTRIBUTOR)).rejects.toThrow(/only open/i);
   });
 });
 
 describe("bountyStore — invalid transitions and errors", () => {
   it("throws when bounty id is missing", async () => {
     const { reserveBounty } = await loadStore();
-    expect(() => reserveBounty("BNT-9999", CONTRIBUTOR)).toThrow(/not found/i);
+    await expect(async () => await reserveBounty("BNT-9999", CONTRIBUTOR)).rejects.toThrow(/not found/i);
   });
 
   it("reserve: rejects non-open statuses", async () => {
     const { createBounty, reserveBounty, submitBounty, releaseBounty, refundBounty } =
       await loadStore();
 
-    const b = createBounty({
+    const b = await createBounty({
       repo: "acme/widget",
       issueNumber: 10,
       title: "Reserve guard bounty title long enough",
@@ -251,16 +258,16 @@ describe("bountyStore — invalid transitions and errors", () => {
       labels: [],
     });
 
-    reserveBounty(b.id, CONTRIBUTOR);
-    expect(() => reserveBounty(b.id, CONTRIBUTOR)).toThrow(/only open/i);
+    await reserveBounty(b.id, CONTRIBUTOR);
+    await expect(async () => await reserveBounty(b.id, CONTRIBUTOR)).rejects.toThrow(/only open/i);
 
-    submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1");
-    expect(() => reserveBounty(b.id, CONTRIBUTOR)).toThrow(/only open/i);
+    await submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1");
+    await expect(async () => await reserveBounty(b.id, CONTRIBUTOR)).rejects.toThrow(/only open/i);
 
-    releaseBounty(b.id, MAINTAINER);
-    expect(() => reserveBounty(b.id, CONTRIBUTOR)).toThrow(/only open/i);
+    await releaseBounty(b.id, MAINTAINER);
+    await expect(async () => await reserveBounty(b.id, CONTRIBUTOR)).rejects.toThrow(/only open/i);
 
-    const b2 = createBounty({
+    const b2 = await createBounty({
       repo: "acme/widget",
       issueNumber: 11,
       title: "Second reserve guard bounty title here",
@@ -271,13 +278,13 @@ describe("bountyStore — invalid transitions and errors", () => {
       deadlineDays: 30,
       labels: [],
     });
-    refundBounty(b2.id, MAINTAINER);
-    expect(() => reserveBounty(b2.id, CONTRIBUTOR)).toThrow(/only open/i);
+    await refundBounty(b2.id, MAINTAINER);
+    await expect(async () => await reserveBounty(b2.id, CONTRIBUTOR)).rejects.toThrow(/only open/i);
   });
 
   it("submit: requires reserved and matching contributor", async () => {
     const { createBounty, reserveBounty, submitBounty } = await loadStore();
-    const b = createBounty({
+    const b = await createBounty({
       repo: "acme/widget",
       issueNumber: 20,
       title: "Submit guard bounty title long enough",
@@ -289,19 +296,15 @@ describe("bountyStore — invalid transitions and errors", () => {
       labels: [],
     });
 
-    expect(() =>
-      submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1"),
-    ).toThrow(/only reserved/i);
+    await expect(async () => await submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1")).rejects.toThrow(/only reserved/i);
 
-    reserveBounty(b.id, CONTRIBUTOR);
-    expect(() =>
-      submitBounty(b.id, OTHER_ACCOUNT, "https://example.com/pr/1"),
-    ).toThrow(/reserved contributor/i);
+    await reserveBounty(b.id, CONTRIBUTOR);
+    await expect(async () => await submitBounty(b.id, OTHER_ACCOUNT, "https://example.com/pr/1")).rejects.toThrow(/reserved contributor/i);
   });
 
   it("release: requires maintainer and submitted status", async () => {
     const { createBounty, reserveBounty, submitBounty, releaseBounty } = await loadStore();
-    const b = createBounty({
+    const b = await createBounty({
       repo: "acme/widget",
       issueNumber: 30,
       title: "Release guard bounty title long enough",
@@ -313,15 +316,15 @@ describe("bountyStore — invalid transitions and errors", () => {
       labels: [],
     });
 
-    expect(() => releaseBounty(b.id, MAINTAINER)).toThrow(/only submitted/i);
+    await expect(async () => await releaseBounty(b.id, MAINTAINER)).rejects.toThrow(/only submitted/i);
 
-    reserveBounty(b.id, CONTRIBUTOR);
-    expect(() => releaseBounty(b.id, MAINTAINER)).toThrow(/only submitted/i);
+    await reserveBounty(b.id, CONTRIBUTOR);
+    await expect(async () => await releaseBounty(b.id, MAINTAINER)).rejects.toThrow(/only submitted/i);
 
-    submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1");
-    expect(() => releaseBounty(b.id, OTHER_ACCOUNT)).toThrow(/maintainer address/i);
+    await submitBounty(b.id, CONTRIBUTOR, "https://example.com/pr/1");
+    await expect(async () => await releaseBounty(b.id, OTHER_ACCOUNT)).rejects.toThrow(/maintainer address/i);
 
-    const released = releaseBounty(b.id, MAINTAINER);
+    const released = await releaseBounty(b.id, MAINTAINER);
     expect(released.status).toBe("released");
   });
 
@@ -329,7 +332,7 @@ describe("bountyStore — invalid transitions and errors", () => {
     const { createBounty, reserveBounty, submitBounty, releaseBounty, refundBounty } =
       await loadStore();
 
-    const openB = createBounty({
+    const openB = await createBounty({
       repo: "acme/widget",
       issueNumber: 40,
       title: "Refund open bounty title long enough",
@@ -340,9 +343,9 @@ describe("bountyStore — invalid transitions and errors", () => {
       deadlineDays: 30,
       labels: [],
     });
-    expect(() => refundBounty(openB.id, OTHER_ACCOUNT)).toThrow(/maintainer address/i);
+    await expect(async () => await refundBounty(openB.id, OTHER_ACCOUNT)).rejects.toThrow(/maintainer address/i);
 
-    const flow = createBounty({
+    const flow = await createBounty({
       repo: "acme/widget",
       issueNumber: 41,
       title: "Refund submitted bounty title enough",
@@ -353,11 +356,11 @@ describe("bountyStore — invalid transitions and errors", () => {
       deadlineDays: 30,
       labels: [],
     });
-    reserveBounty(flow.id, CONTRIBUTOR);
-    submitBounty(flow.id, CONTRIBUTOR, "https://example.com/pr/1");
-    expect(() => refundBounty(flow.id, MAINTAINER)).toThrow(/submitted bounties/i);
+    await reserveBounty(flow.id, CONTRIBUTOR);
+    await submitBounty(flow.id, CONTRIBUTOR, "https://example.com/pr/1");
+    await expect(async () => await refundBounty(flow.id, MAINTAINER)).rejects.toThrow(/submitted bounties/i);
 
-    const rel = createBounty({
+    const rel = await createBounty({
       repo: "acme/widget",
       issueNumber: 42,
       title: "Refund released bounty title enough",
@@ -368,12 +371,12 @@ describe("bountyStore — invalid transitions and errors", () => {
       deadlineDays: 30,
       labels: [],
     });
-    reserveBounty(rel.id, CONTRIBUTOR);
-    submitBounty(rel.id, CONTRIBUTOR, "https://example.com/pr/1");
-    releaseBounty(rel.id, MAINTAINER);
-    expect(() => refundBounty(rel.id, MAINTAINER)).toThrow(/finalized/i);
+    await reserveBounty(rel.id, CONTRIBUTOR);
+    await submitBounty(rel.id, CONTRIBUTOR, "https://example.com/pr/1");
+    await releaseBounty(rel.id, MAINTAINER);
+    await expect(async () => await refundBounty(rel.id, MAINTAINER)).rejects.toThrow(/finalized/i);
 
-    const ref = createBounty({
+    const ref = await createBounty({
       repo: "acme/widget",
       issueNumber: 43,
       title: "Refund twice bounty title long enough",
@@ -384,8 +387,8 @@ describe("bountyStore — invalid transitions and errors", () => {
       deadlineDays: 30,
       labels: [],
     });
-    refundBounty(ref.id, MAINTAINER);
-    expect(() => refundBounty(ref.id, MAINTAINER)).toThrow(/finalized/i);
+    await refundBounty(ref.id, MAINTAINER);
+    await expect(async () => await refundBounty(ref.id, MAINTAINER)).rejects.toThrow(/finalized/i);
   });
 });
 
@@ -394,7 +397,7 @@ describe("bountyStore — event history and metrics", () => {
   it("getBountyEvents returns event history", async () => {
     const { createBounty, reserveBounty, getBountyEvents } = await loadStore();
 
-    const created = createBounty({
+    const created = await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner on slow networks",
@@ -406,7 +409,7 @@ describe("bountyStore — event history and metrics", () => {
       labels: [],
     });
 
-    const reserved = reserveBounty(created.id, CONTRIBUTOR);
+    const reserved = await reserveBounty(created.id, CONTRIBUTOR);
 
     const events = getBountyEvents(created.id);
     expect(events.length).toBeGreaterThanOrEqual(2);
@@ -418,7 +421,7 @@ describe("bountyStore — event history and metrics", () => {
   it("getMaintainerMetrics returns accurate counts", async () => {
     const { createBounty, reserveBounty, submitBounty, releaseBounty, getMaintainerMetrics } = await loadStore();
 
-    const b1 = createBounty({
+    const b1 = await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner",
@@ -430,7 +433,7 @@ describe("bountyStore — event history and metrics", () => {
       labels: [],
     });
 
-    const b2 = createBounty({
+    const b2 = await createBounty({
       repo: "acme/widget",
       issueNumber: 2,
       title: "Add dark mode",
@@ -442,9 +445,9 @@ describe("bountyStore — event history and metrics", () => {
       labels: [],
     });
 
-    reserveBounty(b1.id, CONTRIBUTOR);
-    submitBounty(b1.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/1");
-    releaseBounty(b1.id, MAINTAINER, "a".repeat(64));
+    await reserveBounty(b1.id, CONTRIBUTOR);
+    await submitBounty(b1.id, CONTRIBUTOR, "https://github.com/acme/widget/pull/1");
+    await releaseBounty(b1.id, MAINTAINER, "a".repeat(64));
 
     const metrics = getMaintainerMetrics(MAINTAINER);
     expect(metrics.totalBounties).toBe(2);
@@ -458,7 +461,7 @@ describe("bountyStore — event history and metrics", () => {
   it("getGlobalMetrics returns system-wide counts", async () => {
     const { createBounty, getGlobalMetrics } = await loadStore();
 
-    createBounty({
+    await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner",
@@ -478,7 +481,7 @@ describe("bountyStore — event history and metrics", () => {
   it("race condition prevention: version mismatch on reserve", async () => {
     const { createBounty, reserveBounty } = await loadStore();
 
-    const bounty = createBounty({
+    const bounty = await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner",
@@ -491,19 +494,17 @@ describe("bountyStore — event history and metrics", () => {
     });
 
     // First reservation succeeds
-    const reserved1 = reserveBounty(bounty.id, CONTRIBUTOR);
+    const reserved1 = await reserveBounty(bounty.id, CONTRIBUTOR);
     expect(reserved1.version).toBe(2);
 
     // Second reservation attempt should fail because bounty is no longer open
-    expect(() => {
-      reserveBounty(bounty.id, OTHER_ACCOUNT, 1);
-    }).toThrow(/only open bounties/i);
+    await expect(async () => await reserveBounty(bounty.id, OTHER_ACCOUNT, 1)).rejects.toThrow(/only open bounties/i);
   });
 
   it("reservation timeout: expired reservations return to open", async () => {
     const { createBounty, reserveBounty } = await loadStore();
 
-    const bounty = createBounty({
+    const bounty = await createBounty({
       repo: "acme/widget",
       issueNumber: 1,
       title: "Fix the widget spinner",
@@ -516,7 +517,7 @@ describe("bountyStore — event history and metrics", () => {
       reservationTimeoutSeconds: 604800, // 7 days
     });
 
-    const reserved = reserveBounty(bounty.id, CONTRIBUTOR);
+    const reserved = await reserveBounty(bounty.id, CONTRIBUTOR);
     expect(reserved.status).toBe("reserved");
     expect(reserved.reservedAt).toBeDefined();
     expect(reserved.reservationTimeoutSeconds).toBe(604800);

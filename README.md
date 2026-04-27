@@ -123,3 +123,28 @@ Suggested first issues:
 - Event indexer for contract payouts
 - Postgres persistence and audit log support
 
+
+**Run with Docker Compose**
+
+Run the full development stack (frontend + backend) with a single command using Docker Compose. This will mount your local source into the containers so hot-reload works.
+
+- Requirements: Docker and Docker Compose (v2+).
+- From the repository root, start services:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173 (Vite dev server, started with `--host 0.0.0.0` so it is reachable)
+- Backend: http://localhost:3001 (Express API, `tsx watch` restarts on file changes)
+
+- Notes:
+	- Source directories are mounted into the containers so edits on the host trigger hot-reload in the containers.
+	- Dependencies are installed at image build-time and `node_modules` are stored in container volumes so installs do not modify host files.
+	- If you prefer to install on the host, do not create a `node_modules` folder in the checked-out `frontend/` or `backend/` directories (the named volumes will be used by default).
+	- To stop and remove containers and networks:
+
+```bash
+docker compose down
+```
+

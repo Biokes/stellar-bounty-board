@@ -55,7 +55,7 @@ export function calculateRecommendationScore(
 
   // Label-based scoring
   const labelScore = bounty.labels.reduce((acc, label) => {
-    const normalizedLabel = label.toLowerCase();
+    const normalizedLabel = label.name.toLowerCase();
     const weight = LABEL_WEIGHTS[normalizedLabel] || 0.1;
     
     if (profile.completedLabels.includes(normalizedLabel)) {
@@ -143,7 +143,7 @@ export function updateProfileFromBounties(
   // Update completed labels
   const newLabels = completedBounties
     .filter(bounty => bounty.status === "released")
-    .flatMap(bounty => bounty.labels.map(label => label.toLowerCase()));
+    .flatMap(bounty => bounty.labels.map(label => label.name.toLowerCase()));
   
   updatedProfile.completedLabels = [...new Set([...profile.completedLabels, ...newLabels])];
 
