@@ -108,7 +108,7 @@ async function requestBlob(path: string, init: RequestInit = {}): Promise<{ blob
   return { blob, filename };
 }
 
-export async function listBounties(signal?: AbortSignal): Promise<Bounty[]> {
+
   const body = await requestJson<{ data: Bounty[] }>("/bounties", {
     retry: true,
     retryLabel: "Loading bounties",
