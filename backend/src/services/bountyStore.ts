@@ -365,216 +365,236 @@ export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] 
   return sorted;
 }
 
-export function createBounty(input: CreateBountyInput): BountyRecord {
-  const records = listBounties();
-  const createdAt = nowInSeconds();
-  const bounty: BountyRecord = {
-    id: nextId(records),
-    repo: input.repo,
-    issueNumber: input.issueNumber,
-    title: input.title,
-    summary: input.summary,
-    maintainer: input.maintainer,
-    tokenSymbol: input.tokenSymbol.toUpperCase(),
-    amount: Number(input.amount.toFixed(2)),
-    labels: input.labels,
-    status: "open",
-    createdAt,
-    deadlineAt: createdAt + input.deadlineDays * 24 * 60 * 60,
-    version: 1,
-    events: [{ type: "created", timestamp: createdAt }],
-    reservationTimeoutSeconds: input.reservationTimeoutSeconds ?? 604800,
-  };
+let globalLock: Promise<void> = Promise.resolve();
 
-  writeStore([bounty, ...records]);
-
-  // Trigger notification on create
-  const recipients: NotificationRecipient[] = [
-    { role: 'maintainer', address: input.maintainer },
-  ];
-
-  // Non-blocking: notifications fire-and-forget
-  sendNotification(recipients, 'bounty_created', {
-    bountyId: bounty.id,
-    repo: bounty.repo,
-    issueNumber: bounty.issueNumber,
-    title: bounty.title,
-    status: bounty.status,
-    maintainer: input.maintainer,
-    amount: bounty.amount,
-    tokenSymbol: bounty.tokenSymbol,
-  }).catch(err => console.warn('[createBounty] Notification failed (non-blocking):', err));
-
-  return bounty;
+async function withGlobalLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const previousLock = globalLock;
+  let resolve: () => void;
+  globalLock = new Promise<void>((r) => {
+    resolve = r;
+  });
+  await previousLock;
+  try {
+    return await fn();
+  } finally {
+    resolve!();
+  }
 }
 
-export function reserveBounty(id: string, contributor: string, expectedVersion?: number): BountyRecord {
-  const records = listBounties();
-  const bounty = findBounty(records, id);
+export async function createBounty(input: CreateBountyInput): Promise<BountyRecord> {
+  return withGlobalLock(() => {
+    const records = listBounties();
+    const createdAt = nowInSeconds();
+    const bounty: BountyRecord = {
+      id: nextId(records),
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      title: input.title,
+      summary: input.summary,
+      maintainer: input.maintainer,
+      tokenSymbol: input.tokenSymbol.toUpperCase(),
+      amount: Number(input.amount.toFixed(2)),
+      labels: input.labels,
+      status: "open",
+      createdAt,
+      deadlineAt: createdAt + input.deadlineDays * 24 * 60 * 60,
+      version: 1,
+      events: [{ type: "created", timestamp: createdAt }],
+      reservationTimeoutSeconds: input.reservationTimeoutSeconds ?? 604800,
+    };
 
-  if (bounty.status !== "open") {
-    throw new Error("Only open bounties can be reserved.");
-  }
+    writeStore([bounty, ...records]);
 
-  // Race condition prevention: check version if provided
-  if (expectedVersion !== undefined && bounty.version !== expectedVersion) {
-    throw new Error("Bounty was just reserved by someone else. Please refresh and try again.");
-  }
+    // Trigger notification on create
+    const recipients: NotificationRecipient[] = [{ role: "maintainer", address: input.maintainer }];
 
-  const now = nowInSeconds();
-  const updated: BountyRecord = {
-    ...bounty,
-    contributor,
-    status: "reserved",
-    reservedAt: now,
-    version: bounty.version + 1,
-    events: [
-      ...bounty.events,
-      { type: "reserved", timestamp: now, actor: contributor },
-    ],
-  };
+    // Non-blocking: notifications fire-and-forget
+    sendNotification(recipients, "bounty_created", {
+      bountyId: bounty.id,
+      repo: bounty.repo,
+      issueNumber: bounty.issueNumber,
+      title: bounty.title,
+      status: bounty.status,
+      maintainer: input.maintainer,
+      amount: bounty.amount,
+      tokenSymbol: bounty.tokenSymbol,
+    }).catch((err) => console.warn("[createBounty] Notification failed (non-blocking):", err));
 
-  const persisted = persistUpdated(records, updated);
-  appendAuditLogs([
-    {
-      bountyId: id,
-      fromStatus: bounty.status,
-      toStatus: "reserved",
-      transition: "reserve",
-      actor: contributor,
-    },
-  ]);
-  return persisted;
+    return bounty;
+  });
 }
 
-export function submitBounty(
+export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<BountyRecord> {
+  return withGlobalLock(() => {
+    const records = listBounties();
+    const bounty = findBounty(records, id);
+
+    if (bounty.status !== "open") {
+      throw new Error("Only open bounties can be reserved.");
+    }
+
+    // Race condition prevention: check version if provided
+    if (expectedVersion !== undefined && bounty.version !== expectedVersion) {
+      throw new Error("Bounty was just reserved by someone else. Please refresh and try again.");
+    }
+
+    const now = nowInSeconds();
+    const updated: BountyRecord = {
+      ...bounty,
+      contributor,
+      status: "reserved",
+      reservedAt: now,
+      version: bounty.version + 1,
+      events: [...bounty.events, { type: "reserved", timestamp: now, actor: contributor }],
+    };
+
+    const persisted = persistUpdated(records, updated);
+    appendAuditLogs([
+      {
+        bountyId: id,
+        fromStatus: bounty.status,
+        toStatus: "reserved",
+        transition: "reserve",
+        actor: contributor,
+      },
+    ]);
+    return persisted;
+  });
+}
+
+export async function submitBounty(
   id: string,
   contributor: string,
   submissionUrl: string,
   notes?: string,
-): BountyRecord {
-  const records = listBounties();
-  const bounty = findBounty(records, id);
+): Promise<BountyRecord> {
+  return withGlobalLock(() => {
+    const records = listBounties();
+    const bounty = findBounty(records, id);
 
-  if (bounty.status !== "reserved") {
-    throw new Error("Only reserved bounties can be submitted.");
-  }
-  if (bounty.contributor !== contributor) {
-    throw new Error("Only the reserved contributor can submit this bounty.");
-  }
+    if (bounty.status !== "reserved") {
+      throw new Error("Only reserved bounties can be submitted.");
+    }
+    if (bounty.contributor !== contributor) {
+      throw new Error("Only the reserved contributor can submit this bounty.");
+    }
 
-  const now = nowInSeconds();
-  const updated: BountyRecord = {
-    ...bounty,
-    status: "submitted",
-    submittedAt: now,
-    submissionUrl,
-    notes,
-    version: bounty.version + 1,
-    events: [
-      ...bounty.events,
-      { type: "submitted", timestamp: now, actor: contributor },
-    ],
-  };
+    const now = nowInSeconds();
+    const updated: BountyRecord = {
+      ...bounty,
+      status: "submitted",
+      submittedAt: now,
+      submissionUrl,
+      notes,
+      version: bounty.version + 1,
+      events: [...bounty.events, { type: "submitted", timestamp: now, actor: contributor }],
+    };
 
-  const persisted = persistUpdated(records, updated);
-  appendAuditLogs([
-    {
-      bountyId: id,
-      fromStatus: bounty.status,
-      toStatus: "submitted",
-      transition: "submit",
-      actor: contributor,
-      metadata: {
-        submissionUrl,
-        hasNotes: Boolean(notes?.trim()),
+    const persisted = persistUpdated(records, updated);
+    appendAuditLogs([
+      {
+        bountyId: id,
+        fromStatus: bounty.status,
+        toStatus: "submitted",
+        transition: "submit",
+        actor: contributor,
+        metadata: {
+          submissionUrl,
+          hasNotes: Boolean(notes?.trim()),
+        },
       },
-    },
-  ]);
-  return persisted;
+    ]);
+    return persisted;
+  });
 }
 
-export function releaseBounty(id: string, maintainer: string, transactionHash?: string): BountyRecord {
-  const records = listBounties();
-  const bounty = findBounty(records, id);
+export async function releaseBounty(
+  id: string,
+  maintainer: string,
+  transactionHash?: string,
+): Promise<BountyRecord> {
+  return withGlobalLock(() => {
+    const records = listBounties();
+    const bounty = findBounty(records, id);
 
-  if (bounty.maintainer !== maintainer) {
-    throw new Error("Maintainer address does not match this bounty.");
-  }
-  if (bounty.status !== "submitted") {
-    throw new Error("Only submitted bounties can be released.");
-  }
+    if (bounty.maintainer !== maintainer) {
+      throw new Error("Maintainer address does not match this bounty.");
+    }
+    if (bounty.status !== "submitted") {
+      throw new Error("Only submitted bounties can be released.");
+    }
 
-  const now = nowInSeconds();
-  const updated: BountyRecord = {
-    ...bounty,
-    status: "released",
-    releasedAt: now,
-    releasedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.releasedTxHash,
-    version: bounty.version + 1,
-    events: [
-      ...bounty.events,
-      { type: "released", timestamp: now, actor: maintainer },
-    ],
-  };
+    const now = nowInSeconds();
+    const updated: BountyRecord = {
+      ...bounty,
+      status: "released",
+      releasedAt: now,
+      releasedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.releasedTxHash,
+      version: bounty.version + 1,
+      events: [...bounty.events, { type: "released", timestamp: now, actor: maintainer }],
+    };
 
-  const persisted = persistUpdated(records, updated);
-  appendAuditLogs([
-    {
-      bountyId: id,
-      fromStatus: bounty.status,
-      toStatus: "released",
-      transition: "release",
-      actor: maintainer,
-      metadata: {
-        transactionHash: updated.releasedTxHash,
+    const persisted = persistUpdated(records, updated);
+    appendAuditLogs([
+      {
+        bountyId: id,
+        fromStatus: bounty.status,
+        toStatus: "released",
+        transition: "release",
+        actor: maintainer,
+        metadata: {
+          transactionHash: updated.releasedTxHash,
+        },
       },
-    },
-  ]);
-  return persisted;
+    ]);
+    return persisted;
+  });
 }
 
-export function refundBounty(id: string, maintainer: string, transactionHash?: string): BountyRecord {
-  const records = listBounties();
-  const bounty = findBounty(records, id);
+export async function refundBounty(
+  id: string,
+  maintainer: string,
+  transactionHash?: string,
+): Promise<BountyRecord> {
+  return withGlobalLock(() => {
+    const records = listBounties();
+    const bounty = findBounty(records, id);
 
-  if (bounty.maintainer !== maintainer) {
-    throw new Error("Maintainer address does not match this bounty.");
-  }
-  if (bounty.status === "released" || bounty.status === "refunded") {
-    throw new Error("This bounty is already finalized.");
-  }
-  if (bounty.status === "submitted") {
-    throw new Error("Submitted bounties must be reviewed before refund.");
-  }
+    if (bounty.maintainer !== maintainer) {
+      throw new Error("Maintainer address does not match this bounty.");
+    }
+    if (bounty.status === "released" || bounty.status === "refunded") {
+      throw new Error("This bounty is already finalized.");
+    }
+    if (bounty.status === "submitted") {
+      throw new Error("Submitted bounties must be reviewed before refund.");
+    }
 
-  const now = nowInSeconds();
-  const updated: BountyRecord = {
-    ...bounty,
-    status: "refunded",
-    refundedAt: now,
-    refundedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.refundedTxHash,
-    version: bounty.version + 1,
-    events: [
-      ...bounty.events,
-      { type: "refunded", timestamp: now, actor: maintainer },
-    ],
-  };
+    const now = nowInSeconds();
+    const updated: BountyRecord = {
+      ...bounty,
+      status: "refunded",
+      refundedAt: now,
+      refundedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.refundedTxHash,
+      version: bounty.version + 1,
+      events: [...bounty.events, { type: "refunded", timestamp: now, actor: maintainer }],
+    };
 
-  const persisted = persistUpdated(records, updated);
-  appendAuditLogs([
-    {
-      bountyId: id,
-      fromStatus: bounty.status,
-      toStatus: "refunded",
-      transition: "refund",
-      actor: maintainer,
-      metadata: {
-        transactionHash: updated.refundedTxHash,
+    const persisted = persistUpdated(records, updated);
+    appendAuditLogs([
+      {
+        bountyId: id,
+        fromStatus: bounty.status,
+        toStatus: "refunded",
+        transition: "refund",
+        actor: maintainer,
+        metadata: {
+          transactionHash: updated.refundedTxHash,
+        },
       },
-    },
-  ]);
-  return persisted;
+    ]);
+    return persisted;
+  });
 }
 
 export interface AuditLogPage {
