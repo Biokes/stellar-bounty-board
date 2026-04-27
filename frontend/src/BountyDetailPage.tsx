@@ -1,5 +1,6 @@
 
 
+
 import type { Bounty, BountyEvent, BountyStatus } from "./types";
 
 type BountyAction = "reserve" | "submit" | "release" | "refund";
@@ -173,6 +174,9 @@ export default function BountyDetailPage({
               </div>
               <div className="amount-chip">
                 {bounty.amount} {bounty.tokenSymbol}
+                {bounty.tokenSymbol === "XLM" && (
+                  <UsdAmount amount={bounty.amount} />
+                )}
               </div>
             </div>
 

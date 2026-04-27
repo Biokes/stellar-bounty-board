@@ -291,3 +291,56 @@ export function getContributorMetrics(bounties: Bounty[], contributorAddress?: s
     filtered: contributorBounties,
   };
 }
+
+let cachedRate: number | null = null;
+let cacheTimestamp: number = 0;
+let pendingRequest: Promise<number | null> | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetches the current XLM/USD rate from CoinGecko with a 5-minute cache.
+ */
+export async function getXlmRate(): Promise<number | null> {
+  const now = Date.now();
+  if (cachedRate !== null && now - cacheTimestamp < CACHE_DURATION) {
+    return cachedRate;
+  }
+
+  if (pendingRequest) return pendingRequest;
+
+  pendingRequest = (async () => {
+    try {
+      const response = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd"
+      );
+      if (!response.ok) throw new Error("API response not ok");
+      const data = await response.json();
+      cachedRate = data.stellar.usd;
+      cacheTimestamp = Date.now();
+      return cachedRate;
+    } catch (error) {
+      console.error("Failed to fetch XLM/USD rate:", error);
+      // Fallback to last known rate if available
+      return cachedRate;
+    } finally {
+      pendingRequest = null;
+    }
+  })();
+
+  return pendingRequest;
+}
+
+/**
+ * Converts an XLM amount to a formatted USD string (e.g. "$12.40").
+ * Returns an empty string if the rate cannot be fetched.
+ */
+export async function xlmToUsd(amount: number): Promise<string> {
+  const rate = await getXlmRate();
+  if (rate === null) return "";
+
+  const usdAmount = amount * rate;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(usdAmount);
+}

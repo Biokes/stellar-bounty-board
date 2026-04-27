@@ -43,6 +43,7 @@ import { Bounty, CreateBountyPayload, OpenIssue, BountyStatus } from "./types";
 
 import GitHubIssuePreviewCard from "./GitHubIssuePreviewCard";
 import BountyDetailPage from "./BountyDetailPage";
+import UsdAmount from "./UsdAmount";
 
 import SkeletonBountyCard from "./SkeletonBountyCard";
 
@@ -1066,7 +1067,7 @@ placeholder="help wanted, backend"
                       </span>
                       <h3>{bounty.title}</h3>
                     </div>
-                    <BountyAmount bounty={bounty} />
+
                   </div>
 
                   <p className="bounty-summary">{bounty.summary}</p>
