@@ -1,5 +1,6 @@
 import cors from "cors";
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
+import { randomUUID } from "node:crypto";
 import { buildCorsOptions } from "./middleware/corsOptions";
 import {
   createBounty,
@@ -22,12 +23,47 @@ import {
   submitBountySchema,
   zodErrorMessage,
 } from "./validation/schemas";
-import { requestContextMiddleware } from "./middleware/requestContext";
+import { logStructured } from "./logger";
 import { limiter } from "./utils";
 import {
   captureRawBody,
   createGitHubWebhookSignatureMiddleware,
 } from "./webhooks/signatureVerification";
+
+const INCOMING_REQUEST_ID = /^[a-zA-Z0-9-]{1,128}$/;
+
+function resolveRequestId(req: Request): string {
+  const raw = req.headers["x-request-id"];
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (INCOMING_REQUEST_ID.test(trimmed)) {
+      return trimmed;
+    }
+  }
+  return randomUUID();
+}
+
+function requestContextMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const requestId = resolveRequestId(req);
+  req.requestId = requestId;
+  res.setHeader("X-Request-ID", requestId);
+
+  const start = process.hrtime.bigint();
+
+  res.on("finish", () => {
+    const durationNs = process.hrtime.bigint() - start;
+    const durationMs = Number(durationNs) / 1e6;
+    logStructured("info", "http_request", {
+      requestId,
+      method: req.method,
+      path: req.path || "/",
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 1000) / 1000,
+    });
+  });
+
+  next();
+}
 
 export const app = express();
 
@@ -96,6 +132,14 @@ function sendError(res: Response, req: Request, error: unknown, statusCode = 400
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
     service: "stellar-bounty-board-backend",
+    status: "ok",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/worker/health", (_req: Request, res: Response) => {
+  res.json({
+    service: "stellar-bounty-board-worker",
     status: "ok",
     timestamp: new Date().toISOString(),
   });
@@ -290,6 +334,21 @@ app.get("/api/bounties/:id/events", (req: Request, res: Response) => {
   }
 });
 
+app.get("/api/bounties/:id", (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params.id);
+    const bounties = listBounties();
+    const bounty = bounties.find((b) => b.id === id);
+    if (!bounty) {
+      jsonError(res, req, 404, "Bounty not found.");
+      return;
+    }
+    res.json({ data: bounty });
+  } catch (error) {
+    sendError(res, req, error, 400);
+  }
+});
+
 app.get("/api/maintainers/:maintainer/metrics", (req: Request, res: Response) => {
   try {
     const { maintainer } = req.params;
@@ -308,6 +367,35 @@ app.get("/api/metrics", (_req: Request, res: Response) => {
   try {
     const metrics = getGlobalMetrics();
     res.json({ data: metrics });
+  } catch (error) {
+    sendError(res, req, error);
+  }
+});
+
+app.get("/api/stats", (_req: Request, res: Response) => {
+  try {
+    const bounties = listBounties();
+    const totalBounties = bounties.length;
+    const openBounties = bounties.filter((b) => b.status === "open").length;
+    const totalXlmLocked = bounties
+      .filter((b) => b.status !== "released" && b.status !== "refunded")
+      .reduce((sum, b) => sum + b.amount, 0);
+    const totalXlmPaid = bounties
+      .filter((b) => b.status === "released")
+      .reduce((sum, b) => sum + b.amount, 0);
+    const avgBountyAmount = totalBounties > 0
+      ? Math.round((totalXlmLocked + totalXlmPaid) / totalBounties * 100) / 100
+      : 0;
+
+    res.json({
+      data: {
+        totalBounties,
+        openBounties,
+        totalXlmLocked,
+        totalXlmPaid,
+        avgBountyAmount,
+      },
+    });
   } catch (error) {
     sendError(res, req, error);
   }

@@ -1,12 +1,26 @@
+import { useState } from "react";
 import { ArrowUpRight, Star, TrendingUp } from "lucide-react";
 import { BountyRecommendation } from "./recommendations";
-import { Bounty, BountyStatus } from "./types";
 import { statusCopy } from "./constants";
 
 interface RecommendedBountiesProps {
   recommendations: BountyRecommendation[];
   loading?: boolean;
 }
+
+// Known skill/tech tags used for filtering
+const KNOWN_TAGS = [
+  "Rust",
+  "React",
+  "TypeScript",
+  "Python",
+  "Docs",
+  "Solidity",
+  "Stellar",
+  "Backend",
+  "Frontend",
+  "Testing",
+];
 
 function formatRelativeDeadline(deadlineAt: number): string {
   const now = Math.floor(Date.now() / 1000);
@@ -110,6 +124,19 @@ function BountyRecommendationCard({ recommendation }: { recommendation: BountyRe
 }
 
 export default function RecommendedBounties({ recommendations, loading }: RecommendedBountiesProps) {
+  const [activeTag, setActiveTag] = useState<string>("All");
+
+  const filteredRecommendations =
+    activeTag === "All"
+      ? recommendations
+      : recommendations.filter(({ bounty }) => {
+          const haystack = [
+            ...bounty.labels,
+            ...(bounty.tags ?? []),
+          ].map((t) => t.toLowerCase());
+          return haystack.some((t) => t.includes(activeTag.toLowerCase()));
+        });
+
   if (loading) {
     return (
       <section className="panel recommendations-panel">
@@ -123,9 +150,9 @@ export default function RecommendedBounties({ recommendations, loading }: Recomm
         <div className="board-list">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bounty-card bounty-card--skeleton">
-              <div className="skeleton-line" style={{ width: '60%', height: '20px' }} />
-              <div className="skeleton-line" style={{ width: '40%', height: '16px' }} />
-              <div className="skeleton-line" style={{ width: '80%', height: '14px' }} />
+              <div className="skeleton-line" style={{ width: "60%", height: "20px" }} />
+              <div className="skeleton-line" style={{ width: "40%", height: "16px" }} />
+              <div className="skeleton-line" style={{ width: "80%", height: "14px" }} />
             </div>
           ))}
         </div>
@@ -163,15 +190,49 @@ export default function RecommendedBounties({ recommendations, loading }: Recomm
         <Star size={18} />
       </div>
 
-      <div className="board-list">
-        {recommendations.map((recommendation) => (
-          <BountyRecommendationCard key={recommendation.bounty.id} recommendation={recommendation} />
+      {/* Skill-tag filter chips (#75) */}
+      <div
+        className="tag-filter-row"
+        role="group"
+        aria-label="Filter recommendations by skill tag"
+      >
+        {["All", ...KNOWN_TAGS].map((tag) => (
+          <button
+            key={tag}
+            type="button"
+            className={`filter-chip${activeTag === tag ? " filter-chip--active" : ""}`}
+            onClick={() => setActiveTag(tag)}
+            aria-pressed={activeTag === tag}
+          >
+            {tag}
+          </button>
         ))}
       </div>
 
+      {filteredRecommendations.length === 0 ? (
+        <div className="empty-state">
+          <p>
+            No recommended bounties match the <strong>{activeTag}</strong> tag.{" "}
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => setActiveTag("All")}
+            >
+              Show all
+            </button>
+          </p>
+        </div>
+      ) : (
+        <div className="board-list">
+          {filteredRecommendations.map((recommendation) => (
+            <BountyRecommendationCard key={recommendation.bounty.id} recommendation={recommendation} />
+          ))}
+        </div>
+      )}
+
       <div className="recommendations-footer">
         <p className="recommendations-disclaimer">
-          Recommendations are based on labels you've worked with, repositories you're familiar with, 
+          Recommendations are based on labels you've worked with, repositories you're familiar with,
           and reward amounts that match your history.
         </p>
       </div>
