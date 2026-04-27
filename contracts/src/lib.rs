@@ -9,7 +9,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BountyStatus {
     Open,
     Reserved,
@@ -79,6 +79,35 @@ pub struct BountyRefunded {
     pub amount: i128,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BountyDeadlineExtended {
+    pub bounty_id: u64,
+    pub new_deadline: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContractError {
+    InvalidAmount,
+    DeadlineMustBeInTheFuture,
+    BountyNotOpen,
+    BountyMustBeReserved,
+    ContributorMismatch,
+    MaintainerMismatch,
+    BountyMustBeSubmitted,
+    MissingContributor,
+    BountyAlreadyFinalized,
+    BountyNotExpiredYet,
+    DeadlineMustAdvance,
+    CannotExtendFinalizedBounty,
+    BountyNotFound,
+}
+
+fn panic_error(error: ContractError) -> ! {
+    panic!("{:?}", error);
+}
+
 #[contract]
 pub struct StellarBountyBoardContract;
 
@@ -97,10 +126,10 @@ impl StellarBountyBoardContract {
         maintainer.require_auth();
 
         if amount <= 0 {
-            panic!("amount must be positive");
+            panic_error(ContractError::InvalidAmount);
         }
         if deadline <= env.ledger().timestamp() {
-            panic!("deadline must be in the future");
+            panic_error(ContractError::DeadlineMustBeInTheFuture);
         }
 
         let token_client = TokenClient::new(&env, &token);
@@ -153,7 +182,7 @@ impl StellarBountyBoardContract {
         expire_if_needed(&env, &mut bounty);
 
         if bounty.status != BountyStatus::Open {
-            panic!("bounty is not open");
+            panic_error(ContractError::BountyNotOpen);
         }
 
         bounty.contributor = Some(contributor.clone());
@@ -175,10 +204,10 @@ impl StellarBountyBoardContract {
         expire_if_needed(&env, &mut bounty);
 
         if bounty.status != BountyStatus::Reserved {
-            panic!("bounty must be reserved");
+            panic_error(ContractError::BountyMustBeReserved);
         }
         if bounty.contributor != Some(contributor.clone()) {
-            panic!("contributor mismatch");
+            panic_error(ContractError::ContributorMismatch);
         }
 
         bounty.status = BountyStatus::Submitted;
@@ -198,16 +227,16 @@ impl StellarBountyBoardContract {
         let mut bounty = read_bounty(&env, bounty_id);
 
         if bounty.maintainer != maintainer {
-            panic!("maintainer mismatch");
+            panic_error(ContractError::MaintainerMismatch);
         }
         if bounty.status != BountyStatus::Submitted {
-            panic!("bounty must be submitted");
+            panic_error(ContractError::BountyMustBeSubmitted);
         }
 
         let contributor = bounty
             .contributor
             .clone()
-            .unwrap_or_else(|| panic!("missing contributor"));
+            .unwrap_or_else(|| panic_error(ContractError::MissingContributor));
         let token_client = TokenClient::new(&env, &bounty.token);
         let contract_address = env.current_contract_address();
         token_client.transfer(&contract_address, &contributor, &bounty.amount);
@@ -230,18 +259,18 @@ impl StellarBountyBoardContract {
         let mut bounty = read_bounty(&env, bounty_id);
         
         if bounty.maintainer != maintainer {
-            panic!("maintainer mismatch");
+            panic_error(ContractError::MaintainerMismatch);
         }
 
         // Finalized bounties cannot be refunded
         if bounty.status == BountyStatus::Released || bounty.status == BountyStatus::Refunded {
-            panic!("bounty already finalized");
+            panic_error(ContractError::BountyAlreadyFinalized);
         }
 
         // Active/Submitted bounties can ONLY be refunded if expired
         let now = env.ledger().timestamp();
         if now <= bounty.deadline && bounty.deadline != 0 {
-            panic!("bounty not expired yet");
+            panic_error(ContractError::BountyNotExpiredYet);
         }
 
         let token_client = TokenClient::new(&env, &bounty.token);
@@ -257,6 +286,38 @@ impl StellarBountyBoardContract {
                 bounty_id,
                 maintainer,
                 amount: bounty.amount,
+            },
+        );
+    }
+
+    pub fn extend_deadline(env: Env, bounty_id: u64, maintainer: Address, new_deadline: u64) {
+        maintainer.require_auth();
+        let mut bounty = read_bounty(&env, bounty_id);
+        expire_if_needed(&env, &mut bounty);
+
+        if bounty.maintainer != maintainer {
+            panic_error(ContractError::MaintainerMismatch);
+        }
+
+        if bounty.status == BountyStatus::Released
+            || bounty.status == BountyStatus::Refunded
+            || bounty.status == BountyStatus::Expired
+        {
+            panic_error(ContractError::CannotExtendFinalizedBounty);
+        }
+
+        if new_deadline <= bounty.deadline {
+            panic_error(ContractError::DeadlineMustAdvance);
+        }
+
+        bounty.deadline = new_deadline;
+        write_bounty(&env, bounty_id, &bounty);
+
+        env.events().publish(
+            (symbol_short!("Bounty"), symbol_short!("Extnd")),
+            BountyDeadlineExtended {
+                bounty_id,
+                new_deadline,
             },
         );
     }
@@ -279,7 +340,7 @@ fn read_bounty(env: &Env, bounty_id: u64) -> Bounty {
     env.storage()
         .persistent()
         .get(&DataKey::Bounty(bounty_id))
-        .unwrap_or_else(|| panic!("bounty not found"))
+        .unwrap_or_else(|| panic_error(ContractError::BountyNotFound))
 }
 
 fn write_bounty(env: &Env, bounty_id: u64, bounty: &Bounty) {
@@ -294,4 +355,3 @@ fn expire_if_needed(env: &Env, bounty: &mut Bounty) {
         bounty.status = BountyStatus::Expired;
     }
 }
-
