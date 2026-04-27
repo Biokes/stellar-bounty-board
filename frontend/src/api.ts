@@ -3,7 +3,7 @@ import { Bounty, BountyEvent, CreateBountyPayload, GlobalMetrics, MaintainerMetr
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const READ_RETRY_ATTEMPTS = 3;
-const READ_RETRY_BASE_DELAY_MS = 300;
+const READ_RETRY_BASE_DELAY_MS = 500;
 
 type ApiBody<T> = T & { error?: string };
 
@@ -52,7 +52,7 @@ function formatRetryError(label: string, attempts: number, reason?: string): Err
 }
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { retry = false, retryAttempts = READ_RETRY_ATTEMPTS, retryLabel = "Request", ...init } = options;
+  const { retry = true, retryAttempts = READ_RETRY_ATTEMPTS, retryLabel = "Request", ...init } = options;
 
   let lastError: unknown;
 
@@ -91,21 +91,61 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   throw formatRetryError(retryLabel, retryAttempts, message);
 }
 
-async function requestBlob(path: string, init: RequestInit = {}): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await fetch(`${API_BASE}${path}`, init);
-  if (!response.ok) {
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      const body = (await response.json().catch(() => ({}))) as ApiBody<{ error?: string }>;
-      throw new Error(body.error ?? "Unexpected API error");
+async function requestBlob(path: string, options: RequestOptions = {}): Promise<{ blob: Blob; filename: string | null }> {
+  const { retry = true, retryAttempts = READ_RETRY_ATTEMPTS, retryLabel = "Request", ...init } = options;
+
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`${API_BASE}${path}`, init);
+
+      if (retry && isRetryableResponse(response) && attempt < retryAttempts) {
+        await wait(READ_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+        continue;
+      }
+
+      if (retry && isRetryableResponse(response) && attempt === retryAttempts) {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const body = (await response.json().catch(() => ({}))) as ApiBody<{ error?: string }>;
+          throw formatRetryError(retryLabel, retryAttempts, body.error ?? `HTTP ${response.status}`);
+        }
+        const text = await response.text().catch(() => "");
+        throw formatRetryError(retryLabel, retryAttempts, text || `HTTP ${response.status}`);
+      }
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const body = (await response.json().catch(() => ({}))) as ApiBody<{ error?: string }>;
+          throw new Error(body.error ?? "Unexpected API error");
+        }
+        const text = await response.text().catch(() => "");
+        throw new Error(text || `Request failed with HTTP ${response.status}`);
+      }
+
+      const filename = parseFilenameFromContentDisposition(response.headers.get("content-disposition"));
+      const blob = await response.blob();
+      return { blob, filename };
+    } catch (error) {
+      lastError = error;
+
+      if (!retry || !isRetryableError(error)) {
+        throw error;
+      }
+
+      if (attempt === retryAttempts) {
+        const message = error instanceof Error ? error.message : undefined;
+        throw formatRetryError(retryLabel, retryAttempts, message);
+      }
+
+      await wait(READ_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
     }
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `Request failed with HTTP ${response.status}`);
   }
 
-  const filename = parseFilenameFromContentDisposition(response.headers.get("content-disposition"));
-  const blob = await response.blob();
-  return { blob, filename };
+  const message = lastError instanceof Error ? lastError.message : undefined;
+  throw formatRetryError(retryLabel, retryAttempts, message);
 }
 
 
