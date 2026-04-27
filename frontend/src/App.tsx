@@ -120,6 +120,14 @@ const contributorStatuses: Array<BountyStatus | "all"> = [
   "refunded",
   "expired",
 ];
+const boardStatuses: Array<BountyStatus | "all"> = [
+  "all",
+  "open",
+  "reserved",
+  "submitted",
+  "released",
+  "refunded",
+];
 
 type BountyAction = "reserve" | "submit" | "release" | "refund";
 
@@ -999,6 +1007,21 @@ placeholder="help wanted, backend"
               ))}
             </div>
           </section>
+
+          <div className="board-status-pills" role="tablist" aria-label="Filter bounties by status">
+            {boardStatuses.map((status) => (
+              <button
+                key={status}
+                type="button"
+                role="tab"
+                aria-selected={statusFilter === status}
+                className={`filter-chip ${statusFilter === status ? "filter-chip--active" : ""}`}
+                onClick={() => setStatusFilter(status)}
+              >
+                {status === "all" ? "All" : statusCopy[status].label}
+              </button>
+            ))}
+          </div>
 
           {loading ? (
             <div className="board-list">
