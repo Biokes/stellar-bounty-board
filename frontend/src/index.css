@@ -696,6 +696,29 @@ select {
   word-break: break-word;
 }
 
+.copyable-meta-value {
+  display: grid;
+  gap: 8px;
+}
+
+.copy-meta-button {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(30, 143, 111, 0.16);
+  border-radius: 999px;
+  background: var(--mint-soft);
+  color: #0d4736;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.copy-meta-button:hover {
+  transform: translateY(-1px);
+}
+
 .chip-row--spaced {
   margin-top: 6px;
 }
