@@ -1,6 +1,6 @@
-# Deployment Guide: Render (Backend) & Vercel (Frontend)
+# Deployment Guide: Render/Railway (Backend) & Vercel (Frontend)
 
-This guide explains how to deploy the Stellar Bounty Board backend to Render and the frontend to Vercel. It includes required environment variables, health check paths, and troubleshooting tips.
+This guide explains how to deploy the Stellar Bounty Board backend to Render or Railway, and the frontend to Vercel. It includes required environment variables, health check paths, and troubleshooting tips.
 
 ---
 
@@ -27,7 +27,29 @@ This guide explains how to deploy the Stellar Bounty Board backend to Render and
 ### 5. Troubleshooting
 - If deploy fails, check logs for missing dependencies or build errors.
 - Ensure the port is set to `3001` (or use `process.env.PORT` as Render provides).
-- If you add a database, update environment variables and connection logic.
+
+---
+
+## Backend Deployment: Railway (Alternative)
+
+Railway provides a seamless way to deploy Node.js applications with a `railway.toml` configuration.
+
+### 1. Connect Your Repo
+- Go to [Railway](https://railway.app/).
+- Click **New Project** -> **Deploy from GitHub repo**.
+- Select your fork of the repository.
+
+### 2. Configuration
+- Railway will automatically detect the `railway.toml` in the repository root.
+- It will use the `backend/` directory to build and start the service as defined in the config.
+
+### 3. Environment Variables
+- Add the required environment variables (listed below) in the **Variables** tab of your Railway service.
+- Railway automatically provides a `PORT` variable.
+
+### 4. Health Check
+- The `railway.toml` already configures the health check path: `/api/health`.
+- Railway will wait for this path to return a 200 OK before marking the deployment as healthy.
 
 ---
 
@@ -39,30 +61,26 @@ This guide explains how to deploy the Stellar Bounty Board backend to Render and
 - Set the root directory to `frontend/`.
 
 ### 2. Environment Variables
-- If your backend is public, set `VITE_API_BASE_URL` to your Render backend URL (e.g., `https://your-backend.onrender.com/api`).
+- If your backend is public, set `VITE_API_BASE_URL` to your backend URL (e.g., `https://your-backend.up.railway.app/api` or `https://your-backend.onrender.com/api`).
 - Example:
-  - `VITE_API_BASE_URL=https://your-backend.onrender.com/api`
-- Add any other frontend secrets as needed.
+  - `VITE_API_BASE_URL=https://your-backend.up.railway.app/api`
 
 ### 3. Build & Output Settings
 - Build command: `npm run build`
 - Output directory: `dist`
 
-### 4. Troubleshooting
-- If API calls fail, check CORS and proxy settings.
-- Make sure the backend is deployed and accessible from Vercel.
-- Update the API base URL in your environment variables if the backend URL changes.
-
 ---
 
 ## Required Environment Variables
 
-### Backend (Render)
-- None required for default setup.
-- If you add a database or secrets, document them here.
+### Backend (Render & Railway)
+- `PORT`: (Optional) Port the server listens on. Defaults to `3001` (Railway/Render provide this automatically).
+- `GITHUB_WEBHOOK_SECRET`: (Required if using webhooks) Secret to verify GitHub webhook signatures.
+- `BOUNTY_STORE_PATH`: (Optional) Path to the JSON file for bounty data. Defaults to `./data/bounties.json`.
+- `BOUNTY_AUDIT_STORE_PATH`: (Optional) Path to the JSON file for audit logs.
 
 ### Frontend (Vercel)
-- `VITE_API_BASE_URL` (required): URL of your deployed backend API (e.g., `https://your-backend.onrender.com/api`)
+- `VITE_API_BASE_URL` (Required): URL of your deployed backend API (e.g., `https://your-backend.up.railway.app/api`).
 
 ---
 
@@ -75,7 +93,7 @@ This guide explains how to deploy the Stellar Bounty Board backend to Render and
 ## Common Deployment Issues & Fixes
 - **Build fails:** Check Node.js version (18+), install all dependencies, and verify build commands.
 - **API not reachable:** Confirm backend is live and CORS is configured.
-- **Env vars not set:** Double-check environment variable names and values in Render/Vercel dashboards.
+- **Env vars not set:** Double-check environment variable names and values in Render/Railway/Vercel dashboards.
 - **Frontend shows blank:** Ensure correct output directory (`dist`) and that the API URL is set.
 
 ---
