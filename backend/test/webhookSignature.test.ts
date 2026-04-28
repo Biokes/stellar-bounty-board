@@ -190,17 +190,17 @@ describe("CORS allowlist middleware (#88)", () => {
 });
 
 describe("Bounty search with ?q= (#85)", () => {
-  it("returns all bounties when q is empty", () => {
-    const { listBounties } = require("../src/services/bountyStore");
+  it("returns all bounties when q is empty", async () => {
+    const { listBounties } = await import("../src/services/bountyStore");
     const all = listBounties();
     const withEmpty = listBounties({ q: "" });
     expect(withEmpty.length).toBe(all.length);
   });
 
-  it("filters bounties case-insensitively by title", () => {
-    const { listBounties, createBounty } = require("../src/services/bountyStore");
+  it("filters bounties case-insensitively by title", async () => {
+    const { listBounties, createBounty } = await import("../src/services/bountyStore");
     // Create a bounty with a unique marker in the title
-    createBounty({
+    await createBounty({
       repo: "test/repo",
       issueNumber: 9999,
       title: "UNIQUE_XYZZY_TITLE",
