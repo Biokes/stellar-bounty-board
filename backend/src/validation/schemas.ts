@@ -62,8 +62,7 @@ export const createBountySchema = z
       .openapi({ example: "XLM", description: "Stellar token symbol for payout (1–12 alphanumeric chars)." }),
     amount: z.coerce
       .number()
-      .positive("Amount must be greater than zero.")
-      .openapi({ example: 100, description: "Payout amount in the specified token." }),
+
     deadlineDays: z.coerce
       .number()
       .int()
@@ -103,15 +102,14 @@ export const reserveBountySchema = z
   })
   .openapi("ReserveBountyRequest");
 
+export const GITHUB_PR_URL_REGEX = /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/pull\/\d+$/;
+
 export const submitBountySchema = z
   .object({
     contributor: stellarAccountSchema.openapi({
       description: "Must match the contributor who reserved the bounty.",
     }),
-    submissionUrl: githubPrUrlSchema.openapi({
-      example: "https://github.com/owner/repo/pull/99",
-      description: "Link to the pull request or deliverable.",
-    }),
+
     notes: z
       .string()
       .trim()

@@ -108,18 +108,11 @@ async function requestBlob(path: string, init: RequestInit = {}): Promise<{ blob
   return { blob, filename };
 }
 
-export async function getBounty(id: string): Promise<Bounty> {
-  const body = await requestJson<{ data: Bounty }>(`/bounties/${id}`, {
-    retry: true,
-    retryLabel: "Loading bounty",
-  });
-  return body.data;
-}
 
-export async function listBounties(): Promise<Bounty[]> {
   const body = await requestJson<{ data: Bounty[] }>("/bounties", {
     retry: true,
     retryLabel: "Loading bounties",
+    signal,
   });
   return body.data;
 }
@@ -182,10 +175,11 @@ export async function refundBounty(
   return body.data;
 }
 
-export async function listOpenIssues(): Promise<OpenIssue[]> {
+export async function listOpenIssues(signal?: AbortSignal): Promise<OpenIssue[]> {
   const body = await requestJson<{ data: OpenIssue[] }>("/open-issues", {
     retry: true,
     retryLabel: "Loading open issues",
+    signal,
   });
   return body.data;
 }
