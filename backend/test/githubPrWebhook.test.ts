@@ -9,10 +9,6 @@ import { randomUUID } from "node:crypto";
 
 const secret = "github-webhook-secret";
 
-function createPayloadBuffer(payload: unknown): Buffer {
-  return Buffer.from(JSON.stringify(payload), "utf8");
-}
-
 function createGitHubSignature(payload: Buffer): string {
   return signWebhookPayload({
     payload,
@@ -75,13 +71,14 @@ describe("GitHub webhook PR auto-release", () => {
     expect(saved?.status).toBe("submitted");
 
     const payload = validPrPayload(prUrl, true, "closed");
-    const buffer = createPayloadBuffer(payload);
+    const rawPayload = JSON.stringify(payload);
+    const signature = createGitHubSignature(Buffer.from(rawPayload, "utf8"));
 
     await request(app)
       .post("/api/webhooks/github")
       .set("Content-Type", "application/json")
-      .set("X-Hub-Signature-256", createGitHubSignature(buffer))
-      .send(buffer)
+      .set("X-Hub-Signature-256", signature)
+      .send(rawPayload)
       .expect(202);
 
     saved = listBounties().find(b => b.id === bounty.id);
@@ -99,13 +96,14 @@ describe("GitHub webhook PR auto-release", () => {
     await submitBounty(bounty.id, CONTRIBUTOR, prUrl);
 
     const payload = validPrPayload(prUrl, false, "closed");
-    const buffer = createPayloadBuffer(payload);
+    const rawPayload = JSON.stringify(payload);
+    const signature = createGitHubSignature(Buffer.from(rawPayload, "utf8"));
 
     await request(app)
       .post("/api/webhooks/github")
       .set("Content-Type", "application/json")
-      .set("X-Hub-Signature-256", createGitHubSignature(buffer))
-      .send(buffer)
+      .set("X-Hub-Signature-256", signature)
+      .send(rawPayload)
       .expect(202);
 
     // Should remain submitted
@@ -126,13 +124,14 @@ describe("GitHub webhook PR auto-release", () => {
 
     // Send webhook with different URL
     const payload = validPrPayload(differentPrUrl, true, "closed");
-    const buffer = createPayloadBuffer(payload);
+    const rawPayload = JSON.stringify(payload);
+    const signature = createGitHubSignature(Buffer.from(rawPayload, "utf8"));
 
     await request(app)
       .post("/api/webhooks/github")
       .set("Content-Type", "application/json")
-      .set("X-Hub-Signature-256", createGitHubSignature(buffer))
-      .send(buffer)
+      .set("X-Hub-Signature-256", signature)
+      .send(rawPayload)
       .expect(202);
 
     const saved = listBounties().find(b => b.id === bounty.id);
