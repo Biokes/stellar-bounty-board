@@ -1,6 +1,4 @@
-# Deployment Guide
 
-This guide covers deployment options for the Stellar Bounty Board.
 
 - [Render (Backend) & Vercel (Frontend)](#render-vercel)
 - [Railway One-Click Deployment](#railway)
@@ -21,11 +19,7 @@ This guide covers deployment options for the Stellar Bounty Board.
 
 ### Frontend Deployment: Vercel
 
-1. Go to [Vercel](https://vercel.com/) and import your fork of this repo.
-2. Set the root directory to `frontend/`.
-3. Build command: `npm run build`
-4. Output directory: `dist`
-5. Environment variable: `VITE_API_URL` set to your Render backend URL (e.g., `https://your-backend.onrender.com/api`).
+
 
 ---
 
@@ -60,8 +54,7 @@ Click the button above or follow the manual steps below.
    - Start command (auto-detected): `npm start`
    - Railway assigns a `${{PORT}}` environment variable automatically (overrides the default `3001`)
 
-3. **Set Environment Variables**
-   In the Railway dashboard, navigate to your service → **Variables** and add:
+
 
    | Variable | Required | Example Value | Description |
    |----------|----------|---------------|-------------|
@@ -72,52 +65,12 @@ Click the button above or follow the manual steps below.
    | `BOUNTY_AUDIT_STORE_PATH` | ❌ No | `./data/audit.json` | Audit log file (default) |
    | `LOG_LEVEL` | ❌ No | `info` | Logging level |
 
-   > See [`.env.example`](../.env.example) for the full list of environment variables.
-
-4. **Set Up the Frontend (Optional)**
-   - Create a **second service** in the same Railway project
-   - Set the **Root Directory** to `frontend/`
-   - Add environment variable: `VITE_API_URL` pointing to your deployed backend URL
-   - Railway will auto-detect and build the Vite project
-
-5. **Configure a Custom Domain**
-   - Railway provides a `*.railway.app` domain automatically
-   - For a custom domain: Settings → Domains → Add your domain
-   - Railway handles SSL/TLS certificates automatically
-
-6. **Set Up Health Check**
-   - Health check path: `/api/health`
-   - Railway monitors this and restarts the service if it fails
-   - Expected response: `{ "service": "stellar-bounty-board-backend", "status": "ok", ... }`
-
-### Railway-Specific Tips
-
-- **Automatic Deploys**: Railway auto-deploys when you push to your default branch
-- **Logs**: View real-time logs in the Railway dashboard (Deployments → Logs)
-- **Rollbacks**: Click on any past deployment to redeploy it
-- **Free Tier**: Includes \$5 of free credits monthly — enough for a small project
-- **Sleep Policy**: Services sleep after periods of inactivity (can be disabled in Settings)
-
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Build fails with Node version | Set `NODE_VERSION` environment variable to `18` or `20` |
-| Service crashes on start | Check logs for missing environment variables |
-| Frontend can't reach backend | Verify `VITE_API_URL` points to the correct Railway backend URL |
-| CORS errors | Set `CORS_ORIGINS` to your frontend domain |
-| Health check failing | Ensure `/api/health` returns JSON with `status: "ok"` |
 
 ---
 
 ## Required Environment Variables
 
-### Backend
-- `GITHUB_WEBHOOK_SECRET` — Required for webhook verification
-- All other variables have sensible defaults (see `.env.example`)
 
-### Frontend
-- `VITE_API_URL` — URL of your deployed backend API
 
 ---
 
@@ -132,8 +85,123 @@ Click the button above or follow the manual steps below.
 
 - **Build fails:** Check Node.js version (18+), install all dependencies, and verify build commands.
 - **API not reachable:** Confirm backend is live and CORS is configured.
-- **Env vars not set:** Double-check environment variable names and values.
+
 - **Frontend shows blank:** Ensure correct output directory (`dist`) and that the API URL is set.
+
+---
+
+---
+
+## Docker Deployment
+
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed locally or on server
+
+### Local Full-Stack Development with Docker Compose
+
+Run the entire stack locally using Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+This starts:
+- **Backend:** `http://localhost:3001/api`
+- **Frontend:** `http://localhost:5173`
+
+Set environment variables in a `.env.local` file (in the project root):
+
+```env
+SOROBAN_CONTRACT_ID=your-contract-id
+SOROBAN_RPC_URL=https://rpc-futurenet.stellar.org
+```
+
+Docker Compose will pass these to the containers automatically.
+
+#### Volume Mounts
+- Backend source (`./backend/src`) is mounted, so changes hot-reload during development
+- Frontend source (`./frontend/src`) is mounted similarly
+- Data persists in `./backend/data/`
+
+#### Health Checks
+Both services include health checks. The frontend waits for the backend to be healthy before starting:
+
+```bash
+docker-compose up --build
+# Check service health
+docker-compose ps
+```
+
+### Production Deployment with Docker
+
+#### Build the Backend Image
+
+```bash
+docker build -t stellar-bounty-board-backend:latest .
+```
+
+#### Run the Backend Container
+
+```bash
+docker run -d \
+  -p 3001:3001 \
+  -e SOROBAN_CONTRACT_ID=your-contract-id \
+  -e SOROBAN_RPC_URL=https://rpc-futurenet.stellar.org \
+  -v /path/to/data:/app/data \
+  stellar-bounty-board-backend:latest
+```
+
+#### Build the Frontend Image
+
+```bash
+docker build -t stellar-bounty-board-frontend:latest ./frontend
+```
+
+#### Run the Frontend Container
+
+```bash
+docker run -d \
+  -p 80:5173 \
+  -e VITE_API_BASE_URL=https://your-backend.example.com/api \
+  stellar-bounty-board-frontend:latest
+```
+
+### Environment Variables (Docker)
+
+**Backend (`Dockerfile`):**
+- `NODE_ENV` (default: `production`)
+- `PORT` (default: `3001`)
+- `SOROBAN_CONTRACT_ID` (required if indexing events)
+- `SOROBAN_RPC_URL` (default: `https://rpc-futurenet.stellar.org`)
+
+**Frontend (`frontend/Dockerfile`):**
+- `VITE_API_BASE_URL` (required): URL of your backend API
+
+### Health Check Paths (Docker)
+- Backend: `GET http://localhost:3001/api/health`
+- Frontend: `GET http://localhost:5173` (should load the React app)
+
+### Docker Troubleshooting
+
+**Container fails to start:**
+- Check logs: `docker-compose logs backend` or `docker logs <container-id>`
+- Ensure the root `package.json` and all dependencies are present
+
+**API calls fail from frontend:**
+- Verify `VITE_API_BASE_URL` is set correctly
+- Ensure backend container is healthy: `docker-compose ps`
+- Check CORS settings in the backend
+
+**Data not persisting:**
+- Verify the volume mount path: `docker volume ls` and `docker volume inspect <volume-name>`
+- Ensure the host directory has write permissions
+
+**Port conflicts:**
+- If ports 3001 or 5173 are in use, modify `docker-compose.yml`:
+  ```yaml
+  ports:
+    - "3001:3001"  # Change left side (host) port
+  ```
 
 ---
 
