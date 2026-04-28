@@ -2,8 +2,7 @@ import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
 import { buildCorsOptions } from "./middleware/corsOptions";
-import swaggerUi from "swagger-ui-express";
-import { generateOpenApiDocument } from "./docs/openapi";
+
 import {
   createBounty,
   listBountyAuditLogs,
@@ -274,7 +273,7 @@ app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response
   }
 });
 
-app.post("/api/bounties/:id/release", limiter, async (req: Request, res: Response) => {
+
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -293,7 +292,7 @@ app.post("/api/bounties/:id/release", limiter, async (req: Request, res: Respons
   }
 });
 
-app.post("/api/bounties/:id/refund", limiter, async (req: Request, res: Response) => {
+
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
