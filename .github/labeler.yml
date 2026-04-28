@@ -1,21 +1,2 @@
 frontend:
-  - frontend/**/*
 
-backend:
-  - backend/**/*
-
-contracts:
-  - contracts/**/*
-
-documentation:
-  - docs/**/*
-  - .md
-  - .mdx
-
-ci-cd:
-  - .github/**/*
-
-chore:
-  - package.json
-  - .gitignore
-  - .husky/**/*
