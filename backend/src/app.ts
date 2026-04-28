@@ -383,35 +383,7 @@ app.get("/api/metrics", (_req: Request, res: Response) => {
     const metrics = getGlobalMetrics();
     res.json({ data: metrics });
   } catch (error) {
-    sendError(res, _req, error)
-  }
-});
 
-app.get("/api/stats", (req: Request, res: Response) => {
-  try {
-    const bounties = listBounties();
-    const totalBounties = bounties.length;
-    const openBounties = bounties.filter((b) => b.status === "open").length;
-    const totalXlmLocked = bounties
-      .filter((b) => b.status !== "released" && b.status !== "refunded")
-      .reduce((sum, b) => sum + b.amount, 0);
-    const totalXlmPaid = bounties
-      .filter((b) => b.status === "released")
-      .reduce((sum, b) => sum + b.amount, 0);
-    const avgBountyAmount = totalBounties > 0
-      ? Math.round((totalXlmLocked + totalXlmPaid) / totalBounties * 100) / 100
-      : 0;
 
-    res.json({
-      data: {
-        totalBounties,
-        openBounties,
-        totalXlmLocked,
-        totalXlmPaid,
-        avgBountyAmount,
-      },
-    });
-  } catch (error) {
-    sendError(res, req, error);
   }
 });
