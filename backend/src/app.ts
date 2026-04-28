@@ -1,7 +1,9 @@
 import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
+import swaggerUi from "swagger-ui-express";
 import { buildCorsOptions } from "./middleware/corsOptions";
+import { generateOpenApiDocument } from "./docs/openapi";
 
 import {
   createBounty,
@@ -30,6 +32,7 @@ import {
   captureRawBody,
   createGitHubWebhookSignatureMiddleware,
 } from "./webhooks/signatureVerification";
+import { handleGitHubPrEvent } from "./webhooks/githubPrHandler";
 
 const INCOMING_REQUEST_ID = /^[a-zA-Z0-9-]{1,128}$/;
 
@@ -273,7 +276,7 @@ app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response
   }
 });
 
-
+app.post("/api/bounties/:id/release", limiter, async (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -292,7 +295,7 @@ app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response
   }
 });
 
-
+app.post("/api/bounties/:id/refund", limiter, async (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -314,7 +317,14 @@ app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response
 app.post(
   "/api/webhooks/github",
   createGitHubWebhookSignatureMiddleware(() => process.env.GITHUB_WEBHOOK_SECRET),
-  (_req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
+    try {
+      await handleGitHubPrEvent(req.body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Webhook processing error";
+      res.status(500).json({ error: message, requestId: req.requestId });
+      return;
+    }
     res.status(202).json({
       data: {
         authenticated: true,
@@ -373,6 +383,7 @@ app.get("/api/metrics", (_req: Request, res: Response) => {
     const metrics = getGlobalMetrics();
     res.json({ data: metrics });
   } catch (error) {
+
 
   }
 });
