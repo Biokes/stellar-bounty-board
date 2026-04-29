@@ -1,9 +1,11 @@
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
 
+import { githubPrUrlSchema } from "./prUrl";
+
 extendZodWithOpenApi(z);
 
-const STELLAR_ACCOUNT_REGEX = /^G[A-Z2-7]{55}$/;
+
 const REPO_REGEX = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 const TOKEN_REGEX = /^[A-Za-z0-9]{1,12}$/;
 
@@ -19,10 +21,22 @@ export const bountyIdSchema = z
 const stellarAccountSchema = z
   .string()
   .trim()
-  .regex(STELLAR_ACCOUNT_REGEX, "Must be a valid Stellar public key.")
+  .refine(isValidStellarAddress, {
+    message: "Must be a valid Stellar public key (G... format, 56 characters with valid checksum).",
+  })
   .openapi({
     example: STELLAR_EXAMPLE,
-    description: "A valid Stellar public key (starts with G, 56 characters).",
+    description: "A valid Stellar public key (starts with G, 56 characters, checksum verified).",
+  });
+
+/** Soroban contract address (C... format) */
+const sorobanAddressSchema = z
+  .string()
+  .trim()
+  .regex(SOROBAN_ADDRESS_REGEX, "Must be a valid Soroban contract address.")
+  .openapi({
+    example: "CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    description: "A valid Soroban contract address (starts with C, 56 characters).",
   });
 
 export const createBountySchema = z
@@ -60,6 +74,7 @@ export const createBountySchema = z
       .openapi({ example: "XLM", description: "Stellar token symbol for payout (1–12 alphanumeric chars)." }),
     amount: z.coerce
       .number()
+      .min(1, "Amount must be at least 1 XLM.")
 
     deadlineDays: z.coerce
       .number()
@@ -107,14 +122,7 @@ export const submitBountySchema = z
     contributor: stellarAccountSchema.openapi({
       description: "Must match the contributor who reserved the bounty.",
     }),
-    submissionUrl: z
-      .string()
-      .trim()
-      .regex(GITHUB_PR_URL_REGEX, "Submission URL must be a valid GitHub PR link: https://github.com/<owner>/<repo>/pull/<number>.")
-      .openapi({
-        example: "https://github.com/owner/repo/pull/99",
-        description: "Link to the GitHub pull request.",
-      }),
+
     notes: z
       .string()
       .trim()
