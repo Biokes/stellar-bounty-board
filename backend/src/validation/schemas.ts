@@ -75,14 +75,6 @@ export const createBountySchema = z
     amount: z.coerce
       .number()
       .min(1, "Amount must be at least 1 XLM.")
-      .max(10000, "Amount cannot exceed 10000 XLM.")
-      .refine((val) => {
-        const str = String(val);
-        const parts = str.split(".");
-        if (parts.length === 2 && parts[1].length > 7) return false;
-        return true;
-      }, "Amount can have at most 7 decimal places.")
-      .openapi({ example: 100, description: "Bounty reward amount in XLM (max 7 decimals)." }),
 
     deadlineDays: z.coerce
       .number()
