@@ -7,18 +7,19 @@ Welcome to **Stellar Bounty Board** a contribution-focused Stellar MVP for open 
 ## Table of Contents
 
 1. [What Is This Project?](#1-what-is-this-project)
-2. [Prerequisites](#2-prerequisites)
-3. [Getting the Code](#3-getting-the-code)
-4. [Running the Project Locally](#4-running-the-project-locally)
-5. [Repository Structure](#5-repository-structure)
-6. [Where to Make Common Changes](#6-where-to-make-common-changes)
-7. [Understanding the API](#7-understanding-the-api)
-8. [Testing Your Changes](#8-testing-your-changes)
-9. [Picking Your First Issue](#9-picking-your-first-issue)
-10. [Issue Types Explained](#10-issue-types-explained)
-11. [Submitting a Pull Request](#11-submitting-a-pull-request)
-12. [Architecture & Deployment Links](#12-architecture--deployment-links)
-13. [Getting Help](#13-getting-help)
+2. [Quick Visual Overview](#2-quick-visual-overview)
+3. [Prerequisites](#3-prerequisites)
+4. [Getting the Code](#4-getting-the-code)
+5. [Running the Project Locally](#5-running-the-project-locally)
+6. [Repository Structure](#6-repository-structure)
+7. [Where to Make Common Changes](#7-where-to-make-common-changes)
+8. [Understanding the API](#8-understanding-the-api)
+9. [Testing Your Changes](#9-testing-your-changes)
+10. [Picking Your First Issue](#10-picking-your-first-issue)
+11. [Issue Types Explained](#11-issue-types-explained)
+12. [Submitting a Pull Request](#12-submitting-a-pull-request)
+13. [Architecture & Deployment Links](#13-architecture--deployment-links)
+14. [Getting Help](#14-getting-help)
 
 ---
 
@@ -37,7 +38,37 @@ The backend uses JSON file persistence today, with a clear path to Postgres. The
 
 ---
 
-## 2. Prerequisites
+## 2. Quick Visual Overview
+
+### Demo Video
+> [!NOTE]
+> [Watch the 2-minute project walkthrough here (Coming Soon)](#)
+
+### System Architecture
+This 3-layer diagram shows how the Dashboard, API, and Soroban Contract interact.
+
+```mermaid
+graph TD
+    subgraph Client
+        A[Frontend - React/Vite]
+    end
+    subgraph Server
+        B[Backend - Node/Express]
+        C[(JSON Persistence)]
+    end
+    subgraph Blockchain
+        D[Smart Contract - Soroban/Rust]
+    end
+
+    A -- REST API --> B
+    B -- Reads/Writes --> C
+    A -- Wallet/Tx --> D
+    B -- Event Indexer (Planned) --> D
+```
+
+---
+
+## 3. Prerequisites
 
 Make sure you have the following installed before you begin:
 
@@ -53,56 +84,7 @@ Make sure you have the following installed before you begin:
 
 ---
 
-## Quick Visual Overview
 
-Get a quick feel for the project architecture before diving into the code.
-
-### Video Walkthrough
-
-> 🎥 **Demo video coming soon!**  
-> A short walkthrough (2–3 min) covering the full workflow — create a bounty, reserve it, submit a PR, and release the payout — is being recorded.  
-> Check back or watch this space for the link.
-
-### Architecture Diagram
-
-The system follows a **three-layer architecture**:
-
-```mermaid
-graph TB
-    subgraph Frontend["Frontend (React + Vite)"]
-        UI[Dashboard UI]
-        API[API Client]
-    end
-
-    subgraph Backend["Backend (Node.js + Express)"]
-        REST[REST API Routes]
-        VAL[Zod Validators]
-        PERS[JSON Persistence]
-        WH[Webhook Handler]
-    end
-
-    subgraph Contract["Soroban Smart Contract"]
-        ESCROW[Escrow Logic]
-        EVENTS[Contract Events]
-        STATE[On-Chain State]
-    end
-
-    Frontend -->|HTTP /api| Backend
-    Backend -->|stellar contract invoke| Contract
-    Contract -->|Event Polling| Backend
-    User((Maintainer / Contributor)) -->|Browser| Frontend
-    GitHub((GitHub)) -->|Webhook| Backend
-```
-
-**Flow summary:**
-1. **Maintainer** creates a bounty via the UI → backend persists it → optionally deploys escrow via Soroban contract
-2. **Contributor** browses open bounties → reserves one → submits a PR link
-3. **Maintainer** reviews the PR → releases payout (or refunds)
-4. GitHub **webhooks** sync PR merge status automatically
-
----
-
-## 3. Getting the Code
 
 ```bash
 # Fork the repo on GitHub, then clone your fork
@@ -115,7 +97,7 @@ git remote add upstream https://github.com/ritik4ever/stellar-bounty-board.git
 
 ---
 
-## 4. Running the Project Locally
+## 5. Running the Project Locally
 
 ### Install all dependencies (one command)
 
@@ -159,7 +141,7 @@ npm run build
 
 ---
 
-## 5. Repository Structure
+## 6. Repository Structure
 
 ```
 stellar-bounty-board/
@@ -198,7 +180,7 @@ stellar-bounty-board/
 
 ---
 
-## 6. Where to Make Common Changes
+## 7. Where to Make Common Changes
 
 ### UI / Frontend changes
 **Location:** `frontend/src/`
@@ -261,7 +243,7 @@ Issue drafts in `docs/issues/` are meant to be opened as real GitHub issues. If 
 
 ---
 
-## 7. Understanding the API
+## 8. Understanding the API
 
 Base URLs:
 
@@ -290,7 +272,7 @@ curl -X POST http://localhost:3001/api/bounties \
 
 ---
 
-## 8. Testing Your Changes
+## 9. Testing Your Changes
 
 ### Frontend
 ```bash
@@ -325,7 +307,7 @@ cargo clippy         # Rust linting
 
 ---
 
-## 9. Picking Your First Issue
+## 10. Picking Your First Issue
 
 ### If you are new to the codebase
 
@@ -363,7 +345,7 @@ Look for issues tagged **`enhancement`** or **`help wanted`**. High-value areas 
 
 ---
 
-## 10. Issue Types Explained
+## 11. Issue Types Explained
 
 | Label | Meaning |
 |-------|---------|
@@ -380,7 +362,7 @@ Issue drafts ready to be opened live in [`docs/issues/`](./docs/issues/). If you
 
 ---
 
-## 11. Submitting a Pull Request
+## 12. Submitting a Pull Request
 
 1. **Branch from `main`** — keep your branch focused on one issue
 2. **Write a clear PR title** — e.g. `feat: add wallet authentication for release action`
@@ -393,7 +375,7 @@ Issue drafts ready to be opened live in [`docs/issues/`](./docs/issues/). If you
 
 ---
 
-## 12. Architecture & Deployment Links
+## 13. Architecture & Deployment Links
 
 - **Live demo:** https://stellar-bounty-board-taupe.vercel.app
 - **Stellar Developer Docs:** https://developers.stellar.org/docs
@@ -403,7 +385,7 @@ Issue drafts ready to be opened live in [`docs/issues/`](./docs/issues/). If you
 
 ---
 
-## 13. Getting Help
+## 14. Getting Help
 
 - **Open a Discussion** on GitHub if you are unsure about an approach before coding
 - **Comment on the issue** you are working on if you get stuck

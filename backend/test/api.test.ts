@@ -76,6 +76,60 @@ describe("API — bounty lifecycle routes", () => {
     expect(res.body.error).toBeDefined();
   });
 
+  it("POST create with amount below 1 XLM returns 400", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 0.5 })
+      .expect(400);
+    expect(res.body.error).toMatch(/at least 1 XLM/i);
+  });
+
+  it("POST create with amount above 10000 XLM returns 400", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 10001 })
+      .expect(400);
+    expect(res.body.error).toMatch(/exceed 10000 XLM/i);
+  });
+
+  it("POST create with more than 7 decimal places returns 400", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 100.12345678 })
+      .expect(400);
+    expect(res.body.error).toMatch(/at most 7 decimal places/i);
+  });
+
+  it("POST create with exactly 7 decimal places succeeds", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 100.1234567 })
+      .expect(201);
+    expect(res.body.data.id).toMatch(/^BNT-\d{4}$/);
+  });
+
+  it("POST create with 1 XLM succeeds", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 1 })
+      .expect(201);
+    expect(res.body.data.amount).toBe(1);
+  });
+
+  it("POST create with 10000 XLM succeeds", async () => {
+    const app = await getApp();
+    const res = await request(app)
+      .post("/api/bounties")
+      .send({ ...validCreateBody, amount: 10000 })
+      .expect(201);
+    expect(res.body.data.amount).toBe(10000);
+  });
+
   it("reserve → submit → release flow via HTTP", async () => {
     const app = await getApp();
     const { body: created } = await request(app).post("/api/bounties").send(validCreateBody).expect(201);

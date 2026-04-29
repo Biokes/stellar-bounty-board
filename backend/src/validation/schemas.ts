@@ -1,9 +1,11 @@
 import { extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
 
+import { githubPrUrlSchema } from "./prUrl";
+
 extendZodWithOpenApi(z);
 
-const STELLAR_ACCOUNT_REGEX = /^G[A-Z2-7]{55}$/;
+import { isValidStellarAddress } from "../utils";
 const REPO_REGEX = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 const TOKEN_REGEX = /^[A-Za-z0-9]{1,12}$/;
 
@@ -19,10 +21,12 @@ export const bountyIdSchema = z
 const stellarAccountSchema = z
   .string()
   .trim()
-  .regex(STELLAR_ACCOUNT_REGEX, "Must be a valid Stellar public key.")
+  .refine(isValidStellarAddress, {
+    message: "Must be a valid Stellar public key (G... format, 56 characters with valid checksum).",
+  })
   .openapi({
     example: STELLAR_EXAMPLE,
-    description: "A valid Stellar public key (starts with G, 56 characters).",
+    description: "A valid Stellar public key (starts with G, 56 characters, checksum verified).",
   });
 
 export const createBountySchema = z
@@ -60,8 +64,16 @@ export const createBountySchema = z
       .openapi({ example: "XLM", description: "Stellar token symbol for payout (1–12 alphanumeric chars)." }),
     amount: z.coerce
       .number()
-      .positive("Amount must be greater than zero.")
-      .openapi({ example: 100, description: "Payout amount in the specified token." }),
+      .min(1, "Amount must be at least 1 XLM.")
+      .max(10000, "Amount cannot exceed 10000 XLM.")
+      .refine((val) => {
+        const str = String(val);
+        const parts = str.split(".");
+        if (parts.length === 2 && parts[1].length > 7) return false;
+        return true;
+      }, "Amount can have at most 7 decimal places.")
+      .openapi({ example: 100, description: "Bounty reward amount in XLM (max 7 decimals)." }),
+
     deadlineDays: z.coerce
       .number()
       .int()
@@ -101,19 +113,14 @@ export const reserveBountySchema = z
   })
   .openapi("ReserveBountyRequest");
 
+export const GITHUB_PR_URL_REGEX = /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/pull\/\d+$/;
+
 export const submitBountySchema = z
   .object({
     contributor: stellarAccountSchema.openapi({
       description: "Must match the contributor who reserved the bounty.",
     }),
-    submissionUrl: z
-      .string()
-      .trim()
-      .url("Submission URL must be a valid URL.")
-      .openapi({
-        example: "https://github.com/owner/repo/pull/99",
-        description: "Link to the pull request or deliverable.",
-      }),
+
     notes: z
       .string()
       .trim()
