@@ -4,8 +4,8 @@
 mod test;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token::Client as TokenClient, Address, Env,
-    String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    token::Client as TokenClient, Address, Env, String,
 };
 
 #[contracttype]
@@ -296,7 +296,7 @@ impl StellarBountyBoardContract {
         let contributor = bounty
             .contributor
             .clone()
-            .unwrap_or_else(|| panic_error(ContractError::MissingContributor));
+
 
         let token_client = TokenClient::new(&env, &bounty.token);
         let contract_address = env.current_contract_address();
