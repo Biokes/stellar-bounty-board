@@ -627,6 +627,13 @@ select {
   line-height: 1.5;
 }
 
+.board-status-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
 .status-helper {
   margin-top: 2px;
 }

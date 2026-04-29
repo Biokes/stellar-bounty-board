@@ -253,7 +253,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
 
   const next = records.map((record) => {
     // Ensure events array exists (for backward compatibility)
-    const events = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
+    const events: BountyEvent[] = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
 
     // Check for expired deadline
     if ((record.status === "open" || record.status === "reserved") && now > record.deadlineAt) {
@@ -275,7 +275,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         status: "expired" as const,
         events: [
           ...events,
-          { type: "expired", timestamp: now },
+          { type: "expired" as const, timestamp: now },
         ],
       };
     }
@@ -295,7 +295,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         reservedAt: undefined,
         events: [
           ...events,
-          { type: "expired", timestamp: now, details: { reason: "reservation_timeout" } },
+          { type: "expired" as const, timestamp: now, details: { reason: "reservation_timeout" } },
         ],
       };
     }
