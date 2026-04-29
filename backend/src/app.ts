@@ -1,9 +1,10 @@
 import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
-import { buildCorsOptions } from "./middleware/corsOptions";
 import swaggerUi from "swagger-ui-express";
+import { buildCorsOptions } from "./middleware/corsOptions";
 import { generateOpenApiDocument } from "./docs/openapi";
+
 import {
   createBounty,
   listBountyAuditLogs,
@@ -32,6 +33,7 @@ import {
   captureRawBody,
   createGitHubWebhookSignatureMiddleware,
 } from "./webhooks/signatureVerification";
+import { handleGitHubPrEvent } from "./webhooks/githubPrHandler";
 
 const INCOMING_REQUEST_ID = /^[a-zA-Z0-9-]{1,128}$/;
 
@@ -320,7 +322,14 @@ app.post("/api/bounties/:id/refund", limiter, async (req: Request, res: Response
 app.post(
   "/api/webhooks/github",
   createGitHubWebhookSignatureMiddleware(() => process.env.GITHUB_WEBHOOK_SECRET),
-  (_req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
+    try {
+      await handleGitHubPrEvent(req.body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Webhook processing error";
+      res.status(500).json({ error: message, requestId: req.requestId });
+      return;
+    }
     res.status(202).json({
       data: {
         authenticated: true,
@@ -379,34 +388,16 @@ app.get("/api/metrics", (_req: Request, res: Response) => {
     const metrics = getGlobalMetrics();
     res.json({ data: metrics });
   } catch (error) {
-    sendError(res, _req, error)
+
+
   }
 });
 
-app.get("/api/stats", (_req: Request, res: Response) => {
+app.get("/api/leaderboard", (req: Request, res: Response) => {
   try {
-    const bounties = listBounties();
-    const totalBounties = bounties.length;
-    const openBounties = bounties.filter((b) => b.status === "open").length;
-    const totalXlmLocked = bounties
-      .filter((b) => b.status !== "released" && b.status !== "refunded")
-      .reduce((sum, b) => sum + b.amount, 0);
-    const totalXlmPaid = bounties
-      .filter((b) => b.status === "released")
-      .reduce((sum, b) => sum + b.amount, 0);
-    const avgBountyAmount = totalBounties > 0
-      ? Math.round((totalXlmLocked + totalXlmPaid) / totalBounties * 100) / 100
-      : 0;
-
-    res.json({
-      data: {
-        totalBounties,
-        openBounties,
-        totalXlmLocked,
-        totalXlmPaid,
-        avgBountyAmount,
-      },
-    });
+    const limit = parsePaginationValue(req.query.limit, "limit", 10, 1, 100);
+    const leaderboard = getLeaderboard(limit);
+    res.json({ data: leaderboard });
   } catch (error) {
     sendError(res, req, error);
   }

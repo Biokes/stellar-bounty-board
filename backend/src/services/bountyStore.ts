@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sendNotification, type NotificationRecipient } from "./notificationService";
+import { logStructured } from "../logger";
 
 export type BountyStatus =
   | "open"
@@ -253,7 +254,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
 
   const next = records.map((record) => {
     // Ensure events array exists (for backward compatibility)
-    const events = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
+    const events: BountyEvent[] = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
 
     // Check for expired deadline
     if ((record.status === "open" || record.status === "reserved") && now > record.deadlineAt) {
@@ -275,7 +276,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         status: "expired" as const,
         events: [
           ...events,
-          { type: "expired", timestamp: now },
+          { type: "expired" as const, timestamp: now },
         ],
       };
     }
@@ -295,7 +296,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         reservedAt: undefined,
         events: [
           ...events,
-          { type: "expired", timestamp: now, details: { reason: "reservation_timeout" } },
+          { type: "expired" as const, timestamp: now, details: { reason: "reservation_timeout" } },
         ],
       };
     }
@@ -708,30 +709,12 @@ export function getGlobalMetrics(): GlobalMetrics {
   };
 }
 
+
 export interface LeaderboardEntry {
   address: string;
   totalXlm: number;
   bountiesCompleted: number;
 }
 
-export function getLeaderboard(): LeaderboardEntry[] {
-  const bounties = listBounties();
-  const released = bounties.filter(
-    (b) => b.status === "released" && b.contributor && b.tokenSymbol === "XLM",
-  );
 
-  const map = new Map<string, LeaderboardEntry>();
-  for (const b of released) {
-    const addr = b.contributor as string;
-    const existing = map.get(addr) ?? { address: addr, totalXlm: 0, bountiesCompleted: 0 };
-    map.set(addr, {
-      address: addr,
-      totalXlm: Number((existing.totalXlm + b.amount).toFixed(7)),
-      bountiesCompleted: existing.bountiesCompleted + 1,
-    });
-  }
-
-  return [...map.values()]
-    .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted)
-    .slice(0, 10);
 }
