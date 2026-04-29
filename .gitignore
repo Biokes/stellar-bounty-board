@@ -6,3 +6,5 @@ backend/data/*.local.json
 contracts/target/
 contracts/.stellar/
 
+issue.md
+pr.md
