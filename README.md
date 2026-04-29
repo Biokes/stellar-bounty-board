@@ -1,8 +1,11 @@
 # Stellar Bounty Board
 
+![CI](https://github.com/ritik4ever/stellar-bounty-board/actions/workflows/ci.yml/badge.svg)
+
 Stellar Bounty Board is a contribution-focused Stellar MVP for open source maintainers.
 
 It includes:
+
 - A React dashboard to publish and manage GitHub issue bounties
 - A Node.js/Express API with JSON persistence for bounty lifecycle actions
 - A Soroban contract scaffold for on-chain escrow and payout logic
@@ -13,6 +16,7 @@ It includes:
 Maintainers can fund a GitHub issue as a Stellar bounty, contributors can reserve the work, submit a PR link, and the maintainer can release or refund the escrow.
 
 Current MVP behavior:
+
 - Create issue-linked bounties
 - Browse bounty status and urgency
 - Reserve a bounty as a contributor
@@ -23,15 +27,18 @@ Current MVP behavior:
 ## Project Structure
 
 Frontend (`frontend`, default port `3000`)
+
 - React + Vite
 - Dashboard for bounty creation and lifecycle actions
 
 Backend (`backend`, default port `3001`)
+
 - Express REST API
 - File-backed JSON persistence in `backend/data/bounties.json`
 - Validation with Zod
 
 Contract (`contracts`)
+
 - Soroban Rust contract scaffold
 - Escrow-style bounty lifecycle methods
 
@@ -48,10 +55,12 @@ The backend includes an isolated worker for indexing Soroban contract events. Se
 ## API Overview
 
 Base URL:
+
 - Local backend: `http://localhost:3001`
 - Frontend proxy: `/api`
 
 Routes:
+
 - `GET /api/health`
 - `GET /api/bounties`
 - `POST /api/bounties`
@@ -70,6 +79,7 @@ npm run dev:frontend
 ```
 
 Open:
+
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:3001`
 
@@ -104,6 +114,7 @@ npm run test:coverage
 ## Contract Notes
 
 The Soroban contract models the escrow lifecycle:
+
 - `create_bounty`
 - `reserve_bounty`
 - `submit_bounty`
@@ -113,15 +124,25 @@ The Soroban contract models the escrow lifecycle:
 
 The backend currently acts as the demo control plane, while the contract gives you a clear path to move the source of truth on-chain.
 
+### Contract Error Codes
+
+The Soroban contract uses a named error enum (`Error`) for recoverable failures:
+
+| Code | Variant            | Description                                            |
+|------|--------------------|--------------------------------------------------------|
+| 1    | `BountyNotOpen`    | Bounty reservation failed because the bounty is not in `Open` status (already reserved, expired, etc.) |
+| 2    | `BountyNotFound`   | The specified bounty ID does not exist                 |
+| 3    | `BountyAlreadyReserved` | The bounty is already reserved by another contributor |
+
+These errors are invoked via `panic_with_error!` and surface as `Error(Contract, #N)` in test expectations.
+
 ## Contribution Hooks
 
 Contribution-ready issue drafts live in `docs/issues`.
 
 Suggested first issues:
+
 - Wallet-authenticated maintainer actions
 - GitHub webhook sync for PR state
 - Event indexer for contract payouts
 - Postgres persistence and audit log support
-
-
-

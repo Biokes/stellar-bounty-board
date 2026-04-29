@@ -5,7 +5,7 @@ import { githubPrUrlSchema } from "./prUrl";
 
 extendZodWithOpenApi(z);
 
-import { isValidStellarAddress } from "../utils";
+
 const REPO_REGEX = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 const TOKEN_REGEX = /^[A-Za-z0-9]{1,12}$/;
 
@@ -27,6 +27,16 @@ const stellarAccountSchema = z
   .openapi({
     example: STELLAR_EXAMPLE,
     description: "A valid Stellar public key (starts with G, 56 characters, checksum verified).",
+  });
+
+/** Soroban contract address (C... format) */
+const sorobanAddressSchema = z
+  .string()
+  .trim()
+  .regex(SOROBAN_ADDRESS_REGEX, "Must be a valid Soroban contract address.")
+  .openapi({
+    example: "CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    description: "A valid Soroban contract address (starts with C, 56 characters).",
   });
 
 export const createBountySchema = z
@@ -65,14 +75,6 @@ export const createBountySchema = z
     amount: z.coerce
       .number()
       .min(1, "Amount must be at least 1 XLM.")
-      .max(10000, "Amount cannot exceed 10000 XLM.")
-      .refine((val) => {
-        const str = String(val);
-        const parts = str.split(".");
-        if (parts.length === 2 && parts[1].length > 7) return false;
-        return true;
-      }, "Amount can have at most 7 decimal places.")
-      .openapi({ example: 100, description: "Bounty reward amount in XLM (max 7 decimals)." }),
 
     deadlineDays: z.coerce
       .number()

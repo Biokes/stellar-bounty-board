@@ -84,7 +84,7 @@ Make sure you have the following installed before you begin:
 
 ---
 
-## 4. Getting the Code
+
 
 ```bash
 # Fork the repo on GitHub, then clone your fork

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sendNotification, type NotificationRecipient } from "./notificationService";
+import { logStructured } from "../logger";
 
 export type BountyStatus =
   | "open"
@@ -708,30 +709,12 @@ export function getGlobalMetrics(): GlobalMetrics {
   };
 }
 
+
 export interface LeaderboardEntry {
   address: string;
   totalXlm: number;
   bountiesCompleted: number;
 }
 
-export function getLeaderboard(): LeaderboardEntry[] {
-  const bounties = listBounties();
-  const released = bounties.filter(
-    (b) => b.status === "released" && b.contributor && b.tokenSymbol === "XLM",
-  );
 
-  const map = new Map<string, LeaderboardEntry>();
-  for (const b of released) {
-    const addr = b.contributor as string;
-    const existing = map.get(addr) ?? { address: addr, totalXlm: 0, bountiesCompleted: 0 };
-    map.set(addr, {
-      address: addr,
-      totalXlm: Number((existing.totalXlm + b.amount).toFixed(7)),
-      bountiesCompleted: existing.bountiesCompleted + 1,
-    });
-  }
-
-  return [...map.values()]
-    .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted)
-    .slice(0, 10);
 }
