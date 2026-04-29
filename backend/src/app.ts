@@ -16,6 +16,7 @@ import {
   getBountyEvents,
   getMaintainerMetrics,
   getGlobalMetrics,
+  getLeaderboard,
 } from "./services/bountyStore";
 import { listOpenIssues } from "./services/openIssues";
 import {
@@ -385,5 +386,15 @@ app.get("/api/metrics", (_req: Request, res: Response) => {
   } catch (error) {
 
 
+  }
+});
+
+app.get("/api/leaderboard", (req: Request, res: Response) => {
+  try {
+    const limit = parsePaginationValue(req.query.limit, "limit", 10, 1, 100);
+    const leaderboard = getLeaderboard(limit);
+    res.json({ data: leaderboard });
+  } catch (error) {
+    sendError(res, req, error);
   }
 });
