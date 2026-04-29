@@ -296,6 +296,7 @@ impl StellarBountyBoardContract {
         let contributor = bounty
             .contributor
             .clone()
+            .unwrap();
 
 
         let token_client = TokenClient::new(&env, &bounty.token);
