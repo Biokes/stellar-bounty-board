@@ -17,6 +17,7 @@ pub enum BountyStatus {
     Released,
     Refunded,
     Expired,
+    Disputed,
 }
 
 #[contracttype]
@@ -32,6 +33,7 @@ pub struct Bounty {
     pub deadline: u64,
     pub status: BountyStatus,
     pub protocol_fee_bps: u32, // stored per-bounty so the fee is locked in at creation time
+    pub dispute_raised_at: u64,
 }
 
 #[contracttype]
@@ -39,6 +41,8 @@ enum DataKey {
     NextBountyId,
     Bounty(u64),
     FeeRecipient,
+    Arbiter,
+    DisputeWindow,
 }
 
 #[contracttype]
@@ -46,6 +50,7 @@ enum DataKey {
 pub struct BountyCreated {
     pub bounty_id: u64,
     pub maintainer: Address,
+    pub token: Address,
     pub amount: i128,
     pub repo: String,
     pub issue_number: u32,
@@ -71,8 +76,8 @@ pub struct BountySubmitted {
 pub struct BountyReleased {
     pub bounty_id: u64,
     pub contributor: Address,
-    pub amount: i128,        // net payout after fee
-    pub fee_amount: i128,   // how much went to fee recipient
+    pub amount: i128,     // net payout after fee
+    pub fee_amount: i128, // how much went to fee recipient
 }
 
 #[contracttype]
@@ -81,6 +86,22 @@ pub struct BountyRefunded {
     pub bounty_id: u64,
     pub maintainer: Address,
     pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BountyDisputed {
+    pub bounty_id: u64,
+    pub contributor: Address,
+    pub arbiter: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BountyResolved {
+    pub bounty_id: u64,
+    pub arbiter: Address,
+    pub release: bool,
 }
 
 #[contracttype]
@@ -106,6 +127,8 @@ pub enum ContractError {
     DeadlineMustAdvance,
     CannotExtendFinalizedBounty,
     BountyNotFound,
+    NotArbiter,
+    DisputeWindowNotMet,
 }
 
 fn panic_error(error: ContractError) -> ! {
@@ -117,18 +140,18 @@ pub struct StellarBountyBoardContract;
 
 #[contractimpl]
 impl StellarBountyBoardContract {
-    pub fn initialize(env: Env, fee_recipient: Address) {
+    pub fn initialize(env: Env, fee_recipient: Address, arbiter: Address, dispute_window: u64) {
         // Prevent re-initialization
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::FeeRecipient)
-        {
+        if env.storage().persistent().has(&DataKey::FeeRecipient) {
             panic!("already initialized");
         }
         env.storage()
             .persistent()
             .set(&DataKey::FeeRecipient, &fee_recipient);
+        env.storage().persistent().set(&DataKey::Arbiter, &arbiter);
+        env.storage()
+            .persistent()
+            .set(&DataKey::DisputeWindow, &dispute_window);
     }
 
     pub fn get_fee_recipient(env: Env) -> Address {
@@ -161,9 +184,7 @@ impl StellarBountyBoardContract {
         if protocol_fee_bps > 10_000 {
             panic!("fee exceeds 100%");
         }
-        if protocol_fee_bps > 0
-            && !env.storage().persistent().has(&DataKey::FeeRecipient)
-        {
+        if protocol_fee_bps > 0 && !env.storage().persistent().has(&DataKey::FeeRecipient) {
             panic!("fee recipient not set");
         }
 
@@ -181,7 +202,7 @@ impl StellarBountyBoardContract {
         let bounty = Bounty {
             maintainer: maintainer.clone(),
             contributor: None,
-            token,
+            token: token.clone(),
             amount,
             repo: repo.clone(),
             issue_number,
@@ -189,6 +210,7 @@ impl StellarBountyBoardContract {
             deadline,
             status: BountyStatus::Open,
             protocol_fee_bps,
+            dispute_raised_at: 0,
         };
 
         env.storage()
@@ -203,6 +225,7 @@ impl StellarBountyBoardContract {
             BountyCreated {
                 bounty_id: next_id,
                 maintainer,
+                token,
                 amount,
                 repo,
                 issue_number,
@@ -273,6 +296,7 @@ impl StellarBountyBoardContract {
         let contributor = bounty
             .contributor
             .clone()
+            .unwrap_or_else(|| panic_error(ContractError::MissingContributor));
 
         let token_client = TokenClient::new(&env, &bounty.token);
         let contract_address = env.current_contract_address();
@@ -313,7 +337,7 @@ impl StellarBountyBoardContract {
             BountyReleased {
                 bounty_id,
                 contributor,
-                amount: net_payout,   // net amount after fee
+                amount: net_payout, // net amount after fee
                 fee_amount,
             },
         );
@@ -386,6 +410,114 @@ impl StellarBountyBoardContract {
         );
     }
 
+    pub fn dispute_bounty(env: Env, bounty_id: u64, arbiter: Address) {
+        let mut bounty = read_bounty(&env, bounty_id);
+        let contributor = bounty
+            .contributor
+            .clone()
+            .unwrap_or_else(|| panic_error(ContractError::MissingContributor));
+
+        contributor.require_auth();
+
+        if bounty.status != BountyStatus::Submitted {
+            panic_error(ContractError::BountyMustBeSubmitted);
+        }
+
+        let stored_arbiter: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Arbiter)
+            .unwrap_or_else(|| panic!("arbiter not set"));
+
+        if arbiter != stored_arbiter {
+            panic_error(ContractError::NotArbiter);
+        }
+
+        bounty.status = BountyStatus::Disputed;
+        bounty.dispute_raised_at = env.ledger().timestamp();
+        write_bounty(&env, bounty_id, &bounty);
+
+        env.events().publish(
+            (symbol_short!("Bounty"), symbol_short!("Dispt")),
+            BountyDisputed {
+                bounty_id,
+                contributor,
+                arbiter,
+            },
+        );
+    }
+
+    pub fn resolve_dispute(env: Env, bounty_id: u64, release: bool) {
+        let arbiter: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Arbiter)
+            .unwrap_or_else(|| panic!("arbiter not set"));
+
+        arbiter.require_auth();
+
+        let mut bounty = read_bounty(&env, bounty_id);
+
+        if bounty.status != BountyStatus::Disputed {
+            panic!("bounty not disputed");
+        }
+
+        let dispute_window: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::DisputeWindow)
+            .unwrap_or(0);
+
+        if env.ledger().timestamp() < bounty.dispute_raised_at + dispute_window {
+            panic_error(ContractError::DisputeWindowNotMet);
+        }
+
+        let token_client = TokenClient::new(&env, &bounty.token);
+        let contract_address = env.current_contract_address();
+
+        if release {
+            let contributor = bounty
+                .contributor
+                .clone()
+                .unwrap_or_else(|| panic_error(ContractError::MissingContributor));
+
+            let fee_amount: i128 = if bounty.protocol_fee_bps == 0 {
+                0
+            } else {
+                (bounty.amount * bounty.protocol_fee_bps as i128) / 10_000
+            };
+
+            let net_payout = bounty.amount - fee_amount;
+
+            token_client.transfer(&contract_address, &contributor, &net_payout);
+
+            if fee_amount > 0 {
+                let fee_recipient: Address = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::FeeRecipient)
+                    .unwrap_or_else(|| panic!("fee recipient not set"));
+                token_client.transfer(&contract_address, &fee_recipient, &fee_amount);
+            }
+
+            bounty.status = BountyStatus::Released;
+        } else {
+            token_client.transfer(&contract_address, &bounty.maintainer, &bounty.amount);
+            bounty.status = BountyStatus::Refunded;
+        }
+
+        write_bounty(&env, bounty_id, &bounty);
+
+        env.events().publish(
+            (symbol_short!("Bounty"), symbol_short!("Reslv")),
+            BountyResolved {
+                bounty_id,
+                arbiter,
+                release,
+            },
+        );
+    }
+
     pub fn get_bounty(env: Env, bounty_id: u64) -> Bounty {
         let mut bounty = read_bounty(&env, bounty_id);
         expire_if_needed(&env, &mut bounty);
@@ -416,8 +548,7 @@ fn write_bounty(env: &Env, bounty_id: u64, bounty: &Bounty) {
 fn expire_if_needed(env: &Env, bounty: &mut Bounty) {
     let now = env.ledger().timestamp();
     if now > bounty.deadline
-        && (bounty.status == BountyStatus::Open
-            || bounty.status == BountyStatus::Reserved)
+        && (bounty.status == BountyStatus::Open || bounty.status == BountyStatus::Reserved)
     {
         bounty.status = BountyStatus::Expired;
     }
